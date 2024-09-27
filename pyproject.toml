@@ -1,0 +1,19 @@
+[project]
+name = "lucido"
+description = "A Multi-Transport Peer-to-Peer bidirectional RPC System and Protocol Engine"
+version = "0.1.0"
+authors = [
+ {name = "Rasjid Wilcox", email = "rasjidw@openminddev.net"}
+]
+
+dependencies = [
+    "msgpack",
+    "binarychain",
+]
+
+optional-dependencies.dev = [
+    "pytest",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
