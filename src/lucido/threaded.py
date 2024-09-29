@@ -170,7 +170,7 @@ class TcpHandshake:
         if 'rejected' in response:
             msg = 'Engine {engine.sig} rejected'
             log.error(msg)
-            log.info(f'Offered engine signatures: {response['rejected']}')
+            log.info(f"Offered engine signatures: {response['rejected']}")
             raise RuntimeError(msg)
         raise RuntimeError('Invalid response')
     def acceptor_set_engine(self, *args):

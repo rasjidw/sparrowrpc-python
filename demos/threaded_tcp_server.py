@@ -26,7 +26,7 @@ def hello_world(name=None):
 
 
 @export
-def slow_counter(count_to: int, delay: int = 0.5, progress: CallbackProxy|None = None):
+def slow_counter(count_to: int, delay: int = 0.5, progress: CallbackProxy = None):
     if progress:
         progress.set_to_notification()
     for x in range(count_to):
