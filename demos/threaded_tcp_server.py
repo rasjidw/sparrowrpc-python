@@ -88,6 +88,7 @@ def main():
     server = TcpListener(engine_choicies, dispatcher)
     print('Running server')
     server.run_server('0.0.0.0', 5000)
+    dispatcher.shutdown()
 
 
 if __name__ == '__main__':

@@ -267,8 +267,9 @@ class TcpListener:
         self.initiator = False
         self.tcp_server = None
         self.address = None
-        self.channel_threads = dict()
+        self.channel_threads = dict()  # remote_address -> thread
         self.connected_channels = dict()  # remote_address -> channel
+        self.time_to_stop = False
 
     def run_server(self, bind_address, port):
         self.address = (bind_address, port)
@@ -277,12 +278,26 @@ class TcpListener:
         self.server_socket.bind(self.address)
         self.server_socket.listen(5)
         log.info(f'Listing on {self.address[0]}:{self.address[1]}')
-        while True:
-            client_socket, remote_address = self.server_socket.accept()
-            log.info(f'Accepted connection from {remote_address}')
-            channel_thread = Thread(target=self._start_channel, args=(client_socket, remote_address))
-            self.channel_threads[remote_address] = channel_thread
-            channel_thread.start()
+        try:
+            while not self.time_to_stop:
+                client_socket, remote_address = self.server_socket.accept()
+                log.info(f'Accepted connection from {remote_address}')
+                channel_thread = Thread(target=self._start_channel, args=(client_socket, remote_address))
+                self.channel_threads[remote_address] = channel_thread
+                channel_thread.start()
+        except KeyboardInterrupt:
+            self.shutdown_server()
+
+    def shutdown_server(self):
+        log.info('Starting Server Shutdown')
+        self.time_to_stop = True
+        for channel in self.connected_channels.values():
+            assert isinstance(channel, MsgChannel)
+            channel.shutdown_channel()
+        for channel_thread in self.channel_threads.values():
+            assert isinstance(channel_thread, Thread)
+            channel_thread.join()
+        log.info('Server Shutdown Complete')
 
     def _start_channel(self, client_socket, remote_address):
         handshake = self.handshake_cls(client_socket, self.initiator, self.engine_choices)
