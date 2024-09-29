@@ -80,9 +80,9 @@ def division(a, b):
 
 
 def main():
-    js_engine = ProtocolEngine(JsonSerialiser())
+    json_engine = ProtocolEngine(JsonSerialiser())
     msgpack_engine = ProtocolEngine(MsgpackSerialiser())
-    engine_choicies = [msgpack_engine, js_engine]
+    engine_choicies = [msgpack_engine, json_engine]
     
     dispatcher = ThreadPoolDispatcher(num_threads=5)
     server = TcpListener(engine_choicies, dispatcher)
