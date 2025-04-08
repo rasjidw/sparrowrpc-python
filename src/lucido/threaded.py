@@ -4,7 +4,9 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 import json
 import logging
+import os
 import socket
+import sys
 from threading import Thread, Lock, current_thread, Event
 from traceback import format_exc
 from typing import Any
@@ -55,8 +57,9 @@ class TransportBase(ABC):
                 for incoming_chain in self.chain_reader.get_binary_chains(data):
                     self.incoming_queue.put(incoming_chain)
             else:
-                self.remote_closed = True
                 break
+        self.remote_closed = True
+        self.incoming_queue.put(None)
 
     def _writer(self):
         while True:
@@ -66,9 +69,9 @@ class TransportBase(ABC):
             e = None  # return None if not exception
             try:
                 data = chain.serialise()
-                self.socket.sendall(data)
-            except Exception as e:
-                pass
+                self._write_data(data)
+            except Exception as exc:
+                e = exc
             notifier_queue.put(e)
 
     def get_binary_chains(self):
@@ -309,6 +312,56 @@ class TcpListener:
             channel.start_channel()
 
 
+class StreamTransport(TransportBase):
+    def __init__(self, incoming_stream, outgoing_stream, engine, max_msg_size=10*1024*1024, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, read_buf_size=1):
+        TransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size)
+        self.incoming_stream = incoming_stream
+        self.outgoing_stream = outgoing_stream
+
+    def _read_data(self, size):
+        try:
+            return self.incoming_stream.read(size)
+            # data = self.incoming_stream.read(size)
+            # log.debug(f'Read from incoming stream: {data!s}')
+            # return data
+        except Exception as e:
+            log.debug(f'Error reading from incoming stream in PID {os.getpid()}: {str(e)}')
+            return None
+    
+    def _write_data(self, data):
+        # log.debug(f'Wrote to outgoing stream: {data!s}')
+        self.outgoing_stream.write(data)
+        self.outgoing_stream.flush()
+
+    def close(self):
+        self.incoming_stream.close()
+        self.outgoing_stream.close()
+
+
+class SubprocessRunnerBase(ABC):
+    def __init__(self, engine, dispatcher, func_registers=None):
+        assert isinstance(engine, ProtocolEngine)
+        self.engine = engine
+        self.dispatcher = dispatcher
+        self.func_registers = func_registers
+
+    @abstractmethod
+    def get_channel(self, child_stdin=None, child_stdout=None):
+        raise NotImplementedError()    
+
+
+class ParentSubprocessRunner(SubprocessRunnerBase):
+    def get_channel(self, child_stdin, child_stdout):
+        transport = StreamTransport(outgoing_stream=child_stdin, incoming_stream=child_stdout, engine=self.engine)
+        return MsgChannel(transport, initiator=True, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
+
+
+class ChildSubprocessRunner(SubprocessRunnerBase):
+    def get_channel(self):
+        transport = StreamTransport(sys.stdin.buffer, sys.stdout.buffer, self.engine)
+        return MsgChannel(transport, initiator=False, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
+
+
 class LinkedMessagesProxy:
     def __init__(self, timeout=0):
         self.msg_queue = Queue()
@@ -547,6 +600,10 @@ class MsgChannel:
         self._msg_reader_thread.start()
         self._channel_register.register(self)
         log.debug(f'Channel {self} registered')
+
+    def wait_for_remote_close(self):
+        log.debug(f'Waiting for incoming message pump to finish on {current_thread().name}')
+        self._msg_reader_thread.join()
 
     def _incoming_msg_pump(self):
         log.debug(f'message pump started on thread {current_thread().name}')
