@@ -5,7 +5,8 @@ import sys
 from time import sleep
 from threading import current_thread
 
-from lucido.core import ProtocolEngine, MsgpackSerialiser, FunctionRegister, JsonSerialiser, CallbackProxy, InvalidParams, make_export_decorator, default_func_register, MsgChannelInjector
+from lucido.core import (ProtocolEngine, MsgpackSerialiser, FunctionRegister, JsonSerialiser, CallbackProxy, 
+                         InvalidParams, make_export_decorator, default_func_register, MsgChannelInjector)
 from lucido.threaded import TcpListener, ThreadPoolDispatcher, MsgChannel
 
 
