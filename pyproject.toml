@@ -16,5 +16,9 @@ optional-dependencies.dev = [
     "pytest",
 ]
 
+optional-dependencies.websockets = [
+    "websockets",
+]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
