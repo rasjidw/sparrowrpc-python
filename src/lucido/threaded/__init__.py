@@ -114,6 +114,8 @@ class TcpHandshake:
         self.engine_lookup = {engine.get_engine_signature(): engine for engine in self.engine_choices}
         if not self.engine_choices:
             raise ValueError('At least one engine choice must be passed in')
+        if len(self.engine_choices) != len(self.engine_lookup):
+            raise ValueError('Duplicate engine signatures')
         self.engine_selected = None
         self.handshake_complete = False
     def start_handshake(self):

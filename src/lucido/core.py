@@ -666,7 +666,7 @@ class ProtocolEngine(ProtocolEngineBase):
         return register
     
     def get_engine_signature(self):
-        return f'{self._sig}:{self.serialiser.sig}'
+        return f'{self._sig}/{self.serialiser.sig}'.lower()
     
     def _ping(self):
         return 'pong'
