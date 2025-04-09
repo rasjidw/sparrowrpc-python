@@ -10,6 +10,7 @@ from traceback import print_exc
 from lucido.core import (ProtocolEngine, MsgpackSerialiser, FunctionRegister, OutgoingRequest, RequestCallbackInfo, JsonSerialiser, IncomingResponse, IncomingException,
                        OutgoingLinkedMessage, FinalType, CalleeException, CallerException, make_export_decorator)
 from lucido.threaded import TcpConnector, ThreadPoolDispatcher
+from lucido.threaded.websockets import WebsocketConnector
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
@@ -70,15 +71,21 @@ def background_counter(channel, count_to, delay):
     print(f'*** Background counter result: {result}')
 
 
-def main(use_msgpack):
+def main(use_msgpack, use_websocket):
     if use_msgpack:
         serialiser = MsgpackSerialiser()
     else:
         serialiser = JsonSerialiser()
     engine = ProtocolEngine(serialiser)
     dispatcher = ThreadPoolDispatcher(num_threads=5)
-    connector = TcpConnector(engine, dispatcher)
-    channel = connector.connect('127.0.0.1', 5000)
+    if use_websocket:
+        connector = WebsocketConnector(engine, dispatcher)
+        engine_sig = engine.get_engine_signature()
+        uri = f'ws://127.0.0.1:6000/{engine_sig}'
+        channel = connector.connect(uri)
+    else:
+        connector = TcpConnector(engine, dispatcher)
+        channel = connector.connect('127.0.0.1', 5000)
     channel.start_channel()
 
     # start of test calls
@@ -163,9 +170,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--msgpack', action='store_true')
+    parser.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
     root_logger = logging.getLogger()
     if args.debug:
         root_logger.setLevel(logging.DEBUG)
-    main(args.msgpack)
+    main(args.msgpack, args.websocket)

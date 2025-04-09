@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import logging
 import sys
 from time import sleep
@@ -8,6 +9,7 @@ from threading import current_thread
 from lucido.core import (ProtocolEngine, MsgpackSerialiser, FunctionRegister, JsonSerialiser, CallbackProxy, 
                          InvalidParams, make_export_decorator, default_func_register, MsgChannelInjector)
 from lucido.threaded import TcpListener, ThreadPoolDispatcher, MsgChannel
+from lucido.threaded.websockets import WebsocketListener
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
@@ -81,14 +83,23 @@ def division(a, b):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--websocket', action='store_true')
+    args = parser.parse_args()
+
     json_engine = ProtocolEngine(JsonSerialiser())
     msgpack_engine = ProtocolEngine(MsgpackSerialiser())
     engine_choicies = [msgpack_engine, json_engine]
     
     dispatcher = ThreadPoolDispatcher(num_threads=5)
-    server = TcpListener(engine_choicies, dispatcher)
-    print('Running server')
-    server.run_server('0.0.0.0', 5000)
+    if args.websocket:
+        print('Running websocket server on 6000')
+        websocket_server = WebsocketListener(engine_choicies, dispatcher)
+        websocket_server.run_server('0.0.0.0', 6000)
+    else:
+        print('Running tcp server on 5000')
+        tcp_server = TcpListener(engine_choicies, dispatcher)
+        tcp_server.run_server('0.0.0.0', 5000)
     dispatcher.shutdown()
 
 
