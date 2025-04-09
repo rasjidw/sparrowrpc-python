@@ -15,7 +15,7 @@ from queue import Queue
 
 from binarychain import BinaryChain, ChainReader
 
-from .core import (RequestBase, ProtocolEngine, ResponseType, FinalType, MessageSentEvent, CallerException, CalleeException,
+from lucido.core import (RequestBase, ProtocolEngine, ResponseType, FinalType, MessageSentEvent, CallerException, CalleeException,
                        OutgoingRequest, OutgoingResponse, OutgoingNotification, OutgoingException, OutgoingAcknowledge, OutgoingLinkedMessage,
                        IncomingRequest, IncomingResponse, IncomingNotification, IncomingException, IncomingAcknowledge, IncomingLinkedMessage,
                        FunctionRegister, FuncInfo, default_func_register, RequestCallbackInfo, IterableCallbackInfo, CallbackProxyBase,
