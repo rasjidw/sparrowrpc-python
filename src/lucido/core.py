@@ -225,24 +225,6 @@ class MtpeExceptionCategory(StrEnum):
     TRANSPORT = 't'  # some kind of transport error, or parse error.  # FIXME: Do we need this? Does this make sense?
 
 
-class CallerException(Exception):
-    @classmethod
-    def get_subclasses(cls):
-        for subclass in cls.__subclasses__():
-            yield from subclass.get_subclasses()
-            yield subclass
-
-
-class TargetNotFound(CallerException):
-    pass
-
-
-class InvalidParams(CallerException):
-    pass
-
-
-class CalleeException(Exception):
-    pass
 
 
 @dataclass
@@ -303,8 +285,6 @@ class FuncInfo:
     injectable_params: dict = None       # param name to callable that returns the injected param.
 
 
-class ProtocolError(Exception):
-    pass
 
 
 class FunctionRegister:

@@ -15,11 +15,13 @@ from queue import Queue
 
 from binarychain import BinaryChain, ChainReader
 
-from lucido.core import (RequestBase, ProtocolEngine, ResponseType, FinalType, MessageSentEvent, CallerException, CalleeException,
+from lucido.core import (RequestBase, ProtocolEngine, ResponseType, FinalType, MessageSentEvent,
                        OutgoingRequest, OutgoingResponse, OutgoingNotification, OutgoingException, OutgoingAcknowledge, OutgoingLinkedMessage,
                        IncomingRequest, IncomingResponse, IncomingNotification, IncomingException, IncomingAcknowledge, IncomingLinkedMessage,
                        FunctionRegister, FuncInfo, default_func_register, RequestCallbackInfo, IterableCallbackInfo, CallbackProxyBase,
                          RequestType, MtpeExceptionCategory, MtpeExceptionInfo, InjectorBase)
+
+from lucido.exceptions import CallerException, CalleeException
 
 
 log = logging.getLogger(__name__)
