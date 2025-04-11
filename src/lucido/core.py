@@ -20,6 +20,9 @@ from msgpack import packb, unpackb
 from binarychain import BinaryChain
 
 
+from .exceptions import ProtocolError
+
+
 log = logging.getLogger(__name__)
 
 
