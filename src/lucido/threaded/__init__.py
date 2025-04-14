@@ -25,12 +25,83 @@ from ..engines import (ProtocolEngineBase, RequestBase, ResponseType, FinalType,
 from ..exceptions import CallerException, CalleeException
 from ..core import FunctionRegister, default_func_register
 
-if TYPE_CHECKING:
-    from .transports import TransportBase
-
-
 
 log = logging.getLogger(__name__)
+
+
+class TransportBase(ABC):
+    def __init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size=8192):
+        assert isinstance(engine, ProtocolEngineBase)
+        self.engine = engine
+        self.max_msg_size = max_msg_size
+        self.incoming_queue = Queue(maxsize=incoming_msg_queue_size)
+        self.outgoing_queue = Queue(maxsize=outgoing_msg_queue_size)
+        self.read_buf_size = read_buf_size
+        self.remote_closed = False
+        self.chain_reader = ChainReader(max_part_size=self.max_msg_size, max_chain_size=self.max_msg_size, max_chain_length=self.engine.max_bc_length)
+        self.reader_thread = Thread(target=self._reader, daemon=True)
+        self.writer_thread = Thread(target=self._writer, daemon=True)
+
+    @abstractmethod
+    def _read_data(self, size):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def _write_data(self, data):
+        raise NotImplementedError()
+    
+    def start(self):
+        self.reader_thread.start()
+        self.writer_thread.start()
+
+    def _reader(self):
+        while True:
+            data = self._read_data(self.read_buf_size)
+            if data:
+                for incoming_chain in self.chain_reader.get_binary_chains(data):
+                    self.incoming_queue.put(incoming_chain)
+            else:
+                break
+        self.remote_closed = True
+        self.incoming_queue.put(None)
+
+    def _writer(self):
+        while True:
+            chain, notifier_queue = self.outgoing_queue.get()
+            assert isinstance(chain, BinaryChain)
+            assert isinstance(notifier_queue, Queue)
+            e = None  # return None if not exception
+            try:
+                data = chain.serialise()
+                self._write_data(data)
+            except Exception as exc:
+                e = exc
+            notifier_queue.put(e)
+
+    def get_binary_chains(self):
+        while True:
+            binary_chain = self.incoming_queue.get()
+            if binary_chain is None:  # closing down
+                return
+            yield (binary_chain, self.chain_reader.complete(), self.remote_closed)
+
+    def send_binary_chain(self, binary_chain):
+        log.debug(f'Adding binary chain to outgoing queue: {id(binary_chain)}: {repr(binary_chain)}')
+        notifier_queue = Queue()
+        queue_item = (binary_chain, notifier_queue)
+        self.outgoing_queue.put(queue_item)
+        e = notifier_queue.get()
+        log.debug(f'Binary Chain {id(binary_chain)} sent.')
+        if e:
+            raise e
+        
+    def shutdown(self):
+        self.incoming_queue.put(None)  # end incoming queue
+        self.close()
+        
+    @abstractmethod
+    def close(self):
+        raise NotImplementedError()
 
 
 class LinkedMessagesProxy:
