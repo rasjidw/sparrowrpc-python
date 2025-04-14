@@ -6,10 +6,15 @@ import sys
 from time import sleep
 from threading import current_thread
 
-from lucido.core import ProtocolEngine, MsgpackSerialiser, JsonSerialiser, CallbackProxy, make_export_decorator, MsgChannelInjector
+from lucido.core import make_export_decorator
+from lucido.engines import MsgChannelInjector, CallbackProxy
+from lucido.engines.v050 import ProtocolEngine
+from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
 from lucido.exceptions import InvalidParams
-from lucido.threaded import TcpListener, ThreadPoolDispatcher, MsgChannel
-from lucido.threaded.websockets import WebsocketListener
+
+from lucido.threaded import ThreadPoolDispatcher, MsgChannel
+from lucido.threaded.transports import TcpListener
+from lucido.threaded.transports.websockets import WebsocketListener
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,

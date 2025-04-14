@@ -6,9 +6,12 @@ import sys
 import threading
 import time
 
-from lucido.core import ProtocolEngine, MsgpackSerialiser, JsonSerialiser, IncomingResponse, IncomingException, make_export_decorator
-from lucido.threaded import TcpConnector, ThreadPoolDispatcher
-from lucido.threaded.websockets import WebsocketConnector
+from lucido.core import make_export_decorator
+from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
+from lucido.engines.v050 import ProtocolEngine, IncomingResponse, IncomingException
+from lucido.threaded import ThreadPoolDispatcher
+from lucido.threaded.transports import TcpConnector
+from lucido.threaded.transports.websockets import WebsocketConnector
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')

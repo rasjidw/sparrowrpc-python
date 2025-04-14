@@ -5,7 +5,9 @@ from threading import Thread
 import websockets.sync.client
 import websockets.sync.server
 
-from lucido.threaded import TransportBase, ProtocolEngine, MsgChannel
+from ...engines import ProtocolEngineBase
+from ...threaded import MsgChannel
+from ..transports import TransportBase
 
 
 log = logging.getLogger(__name__)
@@ -45,7 +47,7 @@ class WebsocketConnector:
 
 class WebsocketListener:
     def __init__(self, engine_choices, dispatcher, func_registers=None):
-        if isinstance(engine_choices, ProtocolEngine):
+        if isinstance(engine_choices, ProtocolEngineBase):
             self.engine_choices = [engine_choices]
         else:
             self.engine_choices = engine_choices
