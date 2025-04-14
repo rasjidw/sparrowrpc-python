@@ -7,9 +7,15 @@ import threading
 import time
 from traceback import print_exc
 
-from lucido.core import (ProtocolEngine, MsgpackSerialiser, OutgoingRequest, RequestCallbackInfo, JsonSerialiser, IncomingResponse, IncomingException,
-                       OutgoingLinkedMessage, FinalType, CalleeException, CallerException, IterableCallbackInfo, make_export_decorator)
-from lucido.threaded import TcpConnector, ThreadPoolDispatcher
+
+from lucido.core import make_export_decorator
+from lucido.exceptions import CalleeException, CallerException
+from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
+from lucido.engines import IncomingResponse, IncomingException, OutgoingRequest, RequestCallbackInfo, OutgoingLinkedMessage, FinalType, IterableCallbackInfo
+from lucido.engines.v050 import ProtocolEngine
+
+from lucido.threaded import ThreadPoolDispatcher
+from lucido.threaded.transports import TcpConnector
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
