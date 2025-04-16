@@ -2,8 +2,8 @@ import logging
 
 from binarychain import BinaryChain
 
-from lucido.core import FunctionRegister
-from lucido.serialisers import BaseSerialiser
+from ..core import FunctionRegister
+from ..serialisers import BaseSerialiser
 
 from ..engines import ProtocolEngineBase
 from ..core import OutgoingAcknowledge, OutgoingException, OutgoingLinkedMessage, OutgoingNotification, OutgoingRequest, OutgoingResponse

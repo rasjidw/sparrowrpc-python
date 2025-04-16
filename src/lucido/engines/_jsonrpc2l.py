@@ -3,7 +3,7 @@ import logging
 
 from binarychain import BinaryChain
 
-from lucido.core import FunctionRegister
+from ..core import FunctionRegister
 
 from ..engines import ProtocolEngineBase
 from ..core import OutgoingAcknowledge, OutgoingException, OutgoingLinkedMessage, OutgoingNotification, OutgoingRequest, OutgoingResponse
