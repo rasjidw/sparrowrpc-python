@@ -7,7 +7,7 @@ from time import sleep
 from threading import current_thread
 
 from lucido.core import make_export_decorator
-from lucido.engines import MsgChannelInjector, CallbackProxy
+from lucido.threaded import MsgChannelInjector, CallbackProxy
 from lucido.engines import v050, _jsonrpc2l
 from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
 from lucido.exceptions import InvalidParams

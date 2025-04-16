@@ -11,7 +11,7 @@ from traceback import print_exc
 from lucido.core import make_export_decorator
 from lucido.exceptions import CalleeException, CallerException
 from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
-from lucido.engines import IncomingResponse, IncomingException, OutgoingRequest, RequestCallbackInfo, OutgoingLinkedMessage, FinalType, IterableCallbackInfo
+from lucido.core import IncomingResponse, IncomingException, OutgoingRequest, RequestCallbackInfo, OutgoingLinkedMessage, FinalType, IterableCallbackInfo
 from lucido.engines.v050 import ProtocolEngine
 
 from lucido.threaded import ThreadPoolDispatcher

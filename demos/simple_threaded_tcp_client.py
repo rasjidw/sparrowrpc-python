@@ -6,9 +6,8 @@ import sys
 import threading
 import time
 
-from lucido.core import make_export_decorator
+from lucido.core import make_export_decorator, IncomingResponse, IncomingException
 from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
-from lucido.engines import IncomingResponse, IncomingException
 from lucido.engines import v050, _jsonrpc2l
 
 from lucido.threaded import ThreadPoolDispatcher

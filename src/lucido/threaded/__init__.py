@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from collections.abc import Iterable
 import json
 import logging
 import os
@@ -16,11 +17,12 @@ from queue import Queue
 from binarychain import BinaryChain, ChainReader
 
 
-from ..engines import (ProtocolEngineBase, RequestBase, ResponseType, FinalType, MessageSentEvent,
+from ..core import (RequestBase, ResponseType, FinalType, MessageSentEvent,
                        OutgoingRequest, OutgoingResponse, OutgoingNotification, OutgoingException, OutgoingAcknowledge, OutgoingLinkedMessage,
                        IncomingRequest, IncomingResponse, IncomingNotification, IncomingException, IncomingAcknowledge, IncomingLinkedMessage,
-                       FuncInfo, RequestCallbackInfo, IterableCallbackInfo, CallbackProxyBase,
-                         RequestType, MtpeExceptionCategory, MtpeExceptionInfo, InjectorBase)
+                       FuncInfo, RequestCallbackInfo, IterableCallbackInfo,
+                         RequestType, MtpeExceptionCategory, MtpeExceptionInfo)
+from ..engines import ProtocolEngineBase
 
 from ..exceptions import CallerException, CalleeException
 from ..core import FunctionRegister, default_func_register
@@ -631,3 +633,100 @@ class RequestProxyMaker:
     
     def __call__(self, namespace: str=None, node: str=None, request_type: RequestType = RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
         return RequestProxyMaker(self._msg_channel, namespace, node, request_type, timeout, msg_sent_callback, ack_callback, multipart_reponse)
+
+
+
+
+
+class CallbackProxyBase:
+    def __init__(self, cb_param_name, callback_request_id):
+        self._cb_param_name = cb_param_name
+        self._callback_request_id = callback_request_id
+        self._channel = None
+
+    def set_channel(self, channel):
+        # FIXME: create base MsgChannel in core so we can assert this is a MsgChannel here.
+        self._channel = channel
+
+
+class CallbackProxy(CallbackProxyBase):
+    def __init__(self, cb_param_name, callback_request_id):
+        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id)
+        self.request_type = None  # can be changed before sending / FIXME: how we do set a default?
+
+    def set_to_notification(self):
+        self.request_type = None
+
+    def set_to_request(self, request_type: RequestType):
+        self.request_type = request_type
+
+    def __call__(self, **kwargs):
+        if self.request_type:
+            outgoing_msg = OutgoingRequest(target=self._cb_param_name, callback_request_id=self._callback_request_id, params=kwargs, request_type=self.request_type)
+        else:
+            outgoing_msg = OutgoingNotification(target=self._cb_param_name, callback_request_id=self._callback_request_id, params=kwargs)
+        log.debug(f'Callback Proxy call: {repr(outgoing_msg)}')
+        proxy = self._channel.get_proxy()
+        if self.request_type:
+            result = proxy.send_request(outgoing_msg)
+            return result
+        else:
+            proxy.send_notification(outgoing_msg)
+
+
+
+
+class IterableCallbackProxy(Iterable, CallbackProxyBase):
+    def __init__(self, cb_param_name, callback_request_id):
+        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id)
+        self._final = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self._final:
+            raise StopIteration()
+        
+        outgoing_msg = OutgoingRequest(target=self._cb_param_name, callback_request_id=self._callback_request_id)
+        log.debug(f'CallbackIterableProxy call: {repr(outgoing_msg)}')
+        proxy = self._channel.get_proxy()
+        result, final = proxy.send_request_for_iter(outgoing_msg)
+        if final == FinalType.TERMINATOR:
+            raise StopIteration()
+        elif final == FinalType.FINAL:
+            self._final = True
+        return result
+
+
+
+class InjectorBase(ABC):    
+    # FIXME: create base MsgChannel in core so we can assert this is a MsgChannel here.
+    def __init__(self, msg_channel, incoming_request: RequestBase, func_info: FuncInfo):
+        self.msg_channel = msg_channel
+        self.incoming_request = incoming_request
+        self.func_info = func_info
+
+    @abstractmethod
+    def pre_call_setup(self):
+        raise NotImplementedError
+    
+    @abstractmethod
+    def get_param(self):
+        raise NotImplementedError
+    
+    @abstractmethod
+    def post_call_cleanup(self):
+        raise NotImplementedError
+
+
+class MsgChannelInjector(InjectorBase):
+    def pre_call_setup(self):
+        pass
+
+    # FIXME: create base MsgChannel in core so we can assert this is a MsgChannel here.
+    def get_param(self):
+        return self.msg_channel
+        
+    def post_call_cleanup(self):
+        pass
