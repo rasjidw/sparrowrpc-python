@@ -12,7 +12,7 @@ from lucido.engines import v050, _jsonrpc2l
 from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
 from lucido.exceptions import InvalidParams
 
-from lucido.threaded import ThreadPoolDispatcher, MsgChannel
+from lucido.threaded import ThreadPoolDispatcher, ThreadedMsgChannel
 from lucido.threaded.transports import TcpListener
 from lucido.threaded.transports.websockets import WebsocketListener
 

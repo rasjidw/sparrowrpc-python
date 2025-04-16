@@ -109,14 +109,14 @@ class TransportBase(ABC):
 
 class DispatcherBase(ABC):
     @abstractmethod
-    def dispatch_incoming(self, msg_channel: MsgChannel, request: RequestBase, func_info: FuncInfo):
+    def dispatch_incoming(self, msg_channel: ThreadedMsgChannel, request: RequestBase, func_info: FuncInfo):
         raise NotImplementedError()
     @abstractmethod
     def shutdown(self, timeout=0):
         raise NotImplementedError()
 
 
-def call_func(msg_channel: MsgChannel, incoming_msg: IncomingRequest|IncomingNotification, func_info: FuncInfo):
+def call_func(msg_channel: ThreadedMsgChannel, incoming_msg: IncomingRequest|IncomingNotification, func_info: FuncInfo):
     params = dict()
     injectors = list()
     if func_info.injectable_params:
@@ -149,7 +149,7 @@ def call_func(msg_channel: MsgChannel, incoming_msg: IncomingRequest|IncomingNot
         injector.post_call_cleanup()
     return result
 
-def run_request_wait_to_complete(msg_channel: MsgChannel, request: IncomingRequest, func_info: FuncInfo):
+def run_request_wait_to_complete(msg_channel: ThreadedMsgChannel, request: IncomingRequest, func_info: FuncInfo):
     try:
         if func_info.multipart_reponse:
             for part_result in call_func(msg_channel, request, func_info):
@@ -176,7 +176,7 @@ def run_request_wait_to_complete(msg_channel: MsgChannel, request: IncomingReque
             outgoing_msg = OutgoingException(request_id=request.id, exc_info=exc_info) 
         msg_channel._send_message(outgoing_msg)
 
-def run_request_not_waiting(msg_channel: MsgChannel, request: IncomingRequest|IncomingNotification, func_info: FuncInfo):
+def run_request_not_waiting(msg_channel: ThreadedMsgChannel, request: IncomingRequest|IncomingNotification, func_info: FuncInfo):
     try:
         # we send a response (with no data) to slient requests (before calling the function), but nothing for notifications.
         if isinstance(request, IncomingRequest) and request.request_type == RequestType.SILENT:
@@ -223,7 +223,7 @@ class ThreadPoolDispatcher(DispatcherBase):
         log.debug(f'Dispatch worker in thread {current_thread().name} finished.')
 
 
-    def dispatch_incoming(self, msg_channel: MsgChannel, request: RequestBase, func_info: FuncInfo):
+    def dispatch_incoming(self, msg_channel: ThreadedMsgChannel, request: RequestBase, func_info: FuncInfo):
         queue_item = (msg_channel, request, func_info)
         self.incoming_queue.put(queue_item)
 
@@ -236,7 +236,7 @@ class ThreadPoolDispatcher(DispatcherBase):
         log.debug('Dispatcher shut down')
 
 
-class MsgChannel(MsgChannelBase):
+class ThreadedMsgChannel(MsgChannelBase):
     def __init__(self, transport: TransportBase, initiator: bool, engine: ProtocolEngineBase, dispatcher: DispatcherBase, channel_tag='', func_registers=None, channel_register=None):
         MsgChannelBase.__init__(self, initiator, engine, channel_tag, func_registers, channel_register)
         self.transport = transport
@@ -262,81 +262,33 @@ class MsgChannel(MsgChannelBase):
     def _incoming_msg_pump(self):
         log.debug(f'message pump started on thread {current_thread().name}')
         for (bin_chain, complete, remote_closed) in self.transport.get_binary_chains():
-            log.debug(f'Got incoming binary chain: {repr(bin_chain)}')
-            message = self.engine.parse_incoming_message(bin_chain)
-            log.debug(f'Got incoming message {message}')
-            if (isinstance(message, IncomingRequest) or isinstance(message, IncomingNotification)) and not message.callback_request_id:
+            message, dispatch, incoming_callback = self._parse_and_allocate_bin_chain(bin_chain)
+            if dispatch:
                 self._dispatch(message)
-            else:
-                request_completed = False
-                if (isinstance(message, IncomingRequest) or isinstance(message, IncomingNotification)) and message.callback_request_id:
-                    request_id = message.callback_request_id
-                else:
-                    request_id = message.request_id
-                if isinstance(message, IncomingResponse):
-                    if message.response_type == ResponseType.NORMAL:
-                        request_completed = True
-                    elif message.response_type == ResponseType.MULTIPART:
-                        request_completed = message.final
-                    else:
-                        raise RuntimeError('Invalid response type')
-                if isinstance(message, IncomingException):
-                    request_completed = True
-                try:
-                    if request_completed:
-                        incoming_callback = self._message_event_callbacks.pop(request_id)
-                    else:
-                        incoming_callback = self._message_event_callbacks[request_id]
-                    incoming_callback(message)
-                except KeyError:
-                    log.warning(f'Incoming message {message} with invalid request id')
+            if incoming_callback:
+                incoming_callback(message)
             if remote_closed:
                 break
         log.debug(f'message pump stopped on thread {current_thread().name}')
 
     def _dispatch(self, message: IncomingRequest|IncomingNotification):
-        func_info = self._lookup_func_register(message.target, message.namespace)
+        func_info, ack_err_msg = self._get_func_info_and_ack_err_msg(message)
+        if ack_err_msg:
+            self._send_message(OutgoingAcknowledge(message.id))
         if func_info:
-            assert isinstance(func_info, FuncInfo)
-            if isinstance(message, IncomingRequest) and message.acknowledge:
-                if message.request_type == RequestType.SILENT:
-                    log.warning(f'Silent Request {message} flagged with Acknowledge')
-                else:
-                    if message.id is None:
-                        log.error(f'Incoming request without an id')
-                    else:
-                        self._send_message(OutgoingAcknowledge(message.id))
             self.dispatcher.dispatch_incoming(self, message, func_info)
-        else:
-            if isinstance(message, IncomingRequest):
-                exc_info = MtpeExceptionInfo(MtpeExceptionCategory.CALLER, type='TargetNotFound', msg=f'target {message.target} not found')
-                error_msg = OutgoingException(message.id, exc_info=exc_info)
-                self._send_message(error_msg)
+
+    def _create_message_id(self):
+        with self._message_id_lock:
+            message_id = self._message_id
+            self._message_id += 1
+            return message_id
 
     def _send_message(self, message, message_event_callback = None):
-        add_id = self.engine.always_send_ids
-        register_event_callback = False
-        if isinstance(message, OutgoingRequest):
-            add_id = True
-            register_event_callback = True
-        if isinstance(message, OutgoingAcknowledge):
-            # can't add ids to outgoing acknowledge
-            add_id = False
-        if isinstance(message, OutgoingResponse):
-            if message.acknowledge:
-                add_id = True
-                register_event_callback = True
-        if add_id:
-            message_id = self._create_message_id()
-        else:
-            message_id = None
-
+        add_id, register_event_callback = self._get_add_id_and_reg_cb(message)
+        message_id = self._create_message_id() if add_id else None
         if register_event_callback:
-            if message_id is None:
-                raise RuntimeError('invalid state - message id should be set')
-            if not message_event_callback:
-                raise ValueError('message_event_callback required')
-            self._message_event_callbacks[message_id] = message_event_callback
+            self._reg_callback(message_id, message_event_callback)
 
         bc = self.engine.outgoing_message_to_binary_chain(message, message_id)
         self.transport.send_binary_chain(bc)
@@ -361,7 +313,7 @@ class MsgChannel(MsgChannelBase):
 
 # FIXME: Test timeouts!
 class ChannelProxy:
-    def __init__(self, channel: MsgChannel):
+    def __init__(self, channel: ThreadedMsgChannel):
         self.channel = channel
 
         self._callbacks = defaultdict(dict)   # self._callback[request_id][param_name] = cb_info
@@ -471,7 +423,7 @@ class ChannelProxy:
 
 
 class RequestProxy:
-    def __init__(self, msg_channel: MsgChannel, target: str, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
+    def __init__(self, msg_channel: ThreadedMsgChannel, target: str, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
         self._msg_channel = msg_channel
         self._target = target
         self._namespace = namespace
@@ -503,7 +455,7 @@ class RequestProxy:
     
 
 class RequestProxyMaker:
-    def __init__(self, msg_channel: MsgChannel, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
+    def __init__(self, msg_channel: ThreadedMsgChannel, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
         self._msg_channel = msg_channel
         self._namespace = namespace
         self._node = node

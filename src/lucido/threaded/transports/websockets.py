@@ -6,7 +6,7 @@ import websockets.sync.client
 import websockets.sync.server
 
 from ...core import ProtocolEngineBase
-from ...threaded import MsgChannel
+from ...threaded import ThreadedMsgChannel
 from ..transports import TransportBase
 
 
@@ -42,7 +42,7 @@ class WebsocketConnector:
     def connect(self, ws_uri):
         websocket = websockets.sync.client.connect(ws_uri)
         transport = WebsocketTransport(self.engine, websocket)  # FIX_ME: Allow options to be set / passed in??
-        return MsgChannel(transport, initiator=self.initiator, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
+        return ThreadedMsgChannel(transport, initiator=self.initiator, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
 class WebsocketListener:
@@ -75,7 +75,7 @@ class WebsocketListener:
         log.info('Starting Server Shutdown')
         self.time_to_stop = True
         for channel in self.connected_channels.values():
-            assert isinstance(channel, MsgChannel)
+            assert isinstance(channel, ThreadedMsgChannel)
             channel.shutdown_channel()
         self.websocket_server.shutdown()
         log.info('Server Shutdown Complete')
@@ -88,7 +88,7 @@ class WebsocketListener:
         if engine:
             log.info(f'Accepted connection request from {remote_address} with path {websocket_path}')
             transport = WebsocketTransport(engine, client_websocket)
-            channel = MsgChannel(transport, initiator=False, engine=engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
+            channel = ThreadedMsgChannel(transport, initiator=False, engine=engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             channel.start_channel()
             channel.wait_for_remote_close()

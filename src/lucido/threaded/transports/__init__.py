@@ -18,7 +18,7 @@ from binarychain import BinaryChain, ChainReader
 
 from ...core import ProtocolEngineBase
 
-from ...threaded import MsgChannel, TransportBase
+from ...threaded import ThreadedMsgChannel, TransportBase
 
 
 log = logging.getLogger(__name__)
@@ -180,7 +180,7 @@ class TcpConnector:
         handshake.start_handshake()
         if handshake.engine_selected:
             transport = TcpTransport(handshake.engine_selected, conn_socket)  # FIX_ME: Allow options to be set / passed in??
-            return MsgChannel(transport, initiator=self.initiator, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
+            return ThreadedMsgChannel(transport, initiator=self.initiator, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
         else:
             raise RuntimeError('No engine set')
 
@@ -222,7 +222,7 @@ class TcpListener:
         log.info('Starting Server Shutdown')
         self.time_to_stop = True
         for channel in self.connected_channels.values():
-            assert isinstance(channel, MsgChannel)
+            assert isinstance(channel, ThreadedMsgChannel)
             channel.shutdown_channel()
         for channel_thread in self.channel_threads.values():
             assert isinstance(channel_thread, Thread)
@@ -234,7 +234,7 @@ class TcpListener:
         handshake.start_handshake()
         if handshake.engine_selected:
             transport = TcpTransport(handshake.engine_selected, client_socket)
-            channel = MsgChannel(transport, initiator=False, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
+            channel = ThreadedMsgChannel(transport, initiator=False, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             channel.start_channel()
 
@@ -280,10 +280,10 @@ class SubprocessRunnerBase(ABC):
 class ParentSubprocessRunner(SubprocessRunnerBase):
     def get_channel(self, child_stdin, child_stdout):
         transport = StreamTransport(outgoing_stream=child_stdin, incoming_stream=child_stdout, engine=self.engine)
-        return MsgChannel(transport, initiator=True, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
+        return ThreadedMsgChannel(transport, initiator=True, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
 class ChildSubprocessRunner(SubprocessRunnerBase):
     def get_channel(self):
         transport = StreamTransport(sys.stdin.buffer, sys.stdout.buffer, self.engine)
-        return MsgChannel(transport, initiator=False, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
+        return ThreadedMsgChannel(transport, initiator=False, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)

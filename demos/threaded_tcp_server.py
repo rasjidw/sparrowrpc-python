@@ -11,7 +11,7 @@ from lucido.engines.v050 import ProtocolEngine
 from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
 from lucido.exceptions import InvalidParams
 
-from lucido.threaded import ThreadPoolDispatcher, MsgChannel, MsgChannelInjector, CallbackProxy
+from lucido.threaded import ThreadPoolDispatcher, ThreadedMsgChannel, MsgChannelInjector, CallbackProxy
 from lucido.threaded.transports import TcpListener
 from lucido.threaded.transports.websockets import WebsocketListener
 
@@ -52,7 +52,7 @@ def multipart_response(count_to: int):
 
 @export(injectable_params=dict(channel=MsgChannelInjector))
 def iterable_param(nums, channel):
-    assert isinstance(channel, MsgChannel)
+    assert isinstance(channel, ThreadedMsgChannel)
     count = 0
     for x in nums:
         msg = f'Fetched {x} from remote end'

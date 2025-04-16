@@ -311,12 +311,80 @@ class MsgChannelBase:
             if func_info:
                 return func_info
         return None
+    
+    def _get_add_id_and_reg_cb(self, message):
+        add_id = self.engine.always_send_ids
+        register_event_callback = False
+        if isinstance(message, OutgoingRequest):
+            add_id = True
+            register_event_callback = True
+        if isinstance(message, OutgoingAcknowledge):
+            # can't add ids to outgoing acknowledge
+            add_id = False
+        if isinstance(message, OutgoingResponse):
+            if message.acknowledge:
+                add_id = True
+                register_event_callback = True
+        return add_id, register_event_callback
+    
+    def _reg_callback(self, message_id, message_event_callback):
+            if message_id is None:
+                raise RuntimeError('invalid state - message id should be set')
+            if not message_event_callback:
+                raise ValueError('message_event_callback required')
+            self._message_event_callbacks[message_id] = message_event_callback
 
-    def _create_message_id(self):
-        with self._message_id_lock:
-            message_id = self._message_id
-            self._message_id += 1
-            return message_id
+    def _get_func_info_and_ack_err_msg(self, message: IncomingRequest|IncomingNotification):
+        ack_err_msg = None
+        func_info = self._lookup_func_register(message.target, message.namespace)
+        if func_info:
+            assert isinstance(func_info, FuncInfo)
+            if isinstance(message, IncomingRequest) and message.acknowledge:
+                if message.request_type == RequestType.SILENT:
+                    log.warning(f'Silent Request {message} flagged with Acknowledge')
+                else:
+                    if message.id is None:
+                        log.error(f'Incoming request without an id')
+                    else:
+                        ack_err_msg = OutgoingAcknowledge(message.id)
+        else:
+            if isinstance(message, IncomingRequest):
+                exc_info = MtpeExceptionInfo(MtpeExceptionCategory.CALLER, type='TargetNotFound', msg=f'target {message.target} not found')
+                ack_err_msg = OutgoingException(message.id, exc_info=exc_info)
+        return func_info, ack_err_msg
+    
+    def _parse_and_allocate_bin_chain(self, bin_chain):
+        dispatch = False
+        incoming_callback = None
+        log.debug(f'Got incoming binary chain: {repr(bin_chain)}')
+        message = self.engine.parse_incoming_message(bin_chain)
+        log.debug(f'Got incoming message {message}')
+
+        if (isinstance(message, IncomingRequest) or isinstance(message, IncomingNotification)) and not message.callback_request_id:
+            dispatch = True
+        else:
+            request_completed = False
+            if (isinstance(message, IncomingRequest) or isinstance(message, IncomingNotification)) and message.callback_request_id:
+                request_id = message.callback_request_id
+            else:
+                request_id = message.request_id
+            if isinstance(message, IncomingResponse):
+                if message.response_type == ResponseType.NORMAL:
+                    request_completed = True
+                elif message.response_type == ResponseType.MULTIPART:
+                    request_completed = message.final
+                else:
+                    raise RuntimeError('Invalid response type')
+            if isinstance(message, IncomingException):
+                request_completed = True
+            try:
+                if request_completed:
+                    incoming_callback = self._message_event_callbacks.pop(request_id)
+                else:
+                    incoming_callback = self._message_event_callbacks[request_id]
+            except KeyError:
+                log.warning(f'Incoming message {message} with invalid request id')
+        return message, dispatch, incoming_callback
 
 
 class ProtocolEngineBase(ABC):
