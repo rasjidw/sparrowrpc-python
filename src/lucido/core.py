@@ -102,19 +102,6 @@ class OutgoingNotification(RequestBase):
     pass
 
 
-@dataclass
-class OutgoingLinkedMessage:
-    request_id: int
-    data: Any = None
-    acknowledge: bool = False
-    raw_binary: bool = False
-    final: FinalType = None
-
-
-@dataclass
-class IncomingLinkedMessage(OutgoingLinkedMessage):
-    id: int = None
-
 
 @dataclass
 class ResponseBase:

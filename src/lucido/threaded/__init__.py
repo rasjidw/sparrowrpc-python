@@ -18,8 +18,8 @@ from binarychain import BinaryChain, ChainReader
 
 
 from ..core import (RequestBase, ResponseType, FinalType, MessageSentEvent,
-                       OutgoingRequest, OutgoingResponse, OutgoingNotification, OutgoingException, OutgoingAcknowledge, OutgoingLinkedMessage,
-                       IncomingRequest, IncomingResponse, IncomingNotification, IncomingException, IncomingAcknowledge, IncomingLinkedMessage,
+                       OutgoingRequest, OutgoingResponse, OutgoingNotification, OutgoingException, OutgoingAcknowledge,
+                       IncomingRequest, IncomingResponse, IncomingNotification, IncomingException, IncomingAcknowledge,
                        FuncInfo, RequestCallbackInfo, IterableCallbackInfo,
                          RequestType, MtpeExceptionCategory, MtpeExceptionInfo)
 from ..engines import ProtocolEngineBase
@@ -106,40 +106,6 @@ class TransportBase(ABC):
         raise NotImplementedError()
 
 
-class LinkedMessagesProxy:
-    def __init__(self, timeout=0):
-        self.msg_queue = Queue()
-        self.timeout = timeout
-        self.final = False
-        self.time_to_stop = False
-
-    def __iter__(self):
-        return self
-
-    def process_linked_message(self, msg: IncomingLinkedMessage):
-        self.msg_queue.put(msg)
-
-    def __next__(self):
-        if self.final:
-            raise StopIteration
-        
-        counter = 0
-        while not self.time_to_stop:
-            try:
-                msg = self.msg_queue.get(timeout=1)
-            except queue.Empty:
-                counter += 1
-                if counter > self.timeout:
-                    raise RuntimeError('Timeout!')  # FIXME: better error
-                continue
-            assert isinstance(msg, IncomingLinkedMessage)
-            if msg.final == FinalType.TERMINATOR:
-                raise StopIteration
-            elif msg.final == FinalType.FINAL:
-                self.final = True
-            return msg.data
-
-
 class DispatcherBase(ABC):
     @abstractmethod
     def dispatch_incoming(self, msg_channel: MsgChannel, request: RequestBase, func_info: FuncInfo):
@@ -176,10 +142,6 @@ def call_func(msg_channel: MsgChannel, incoming_msg: IncomingRequest|IncomingNot
                 assert isinstance(cb_proxy, CallbackProxyBase)
                 cb_proxy.set_channel(msg_channel)
                 params[param_name] = cb_proxy
-        if func_info.multipart_request:
-            lm_proxy = msg_channel.get_linked_message_proxy(incoming_msg.id)
-            assert isinstance(lm_proxy, LinkedMessagesProxy)
-            params[func_info.multipart_request] = lm_proxy
         result = func_info.func(**params)
     for injector in injectors:
         assert isinstance(injector, InjectorBase)
@@ -333,11 +295,6 @@ class MsgChannel:
     def get_proxy(self):
         return ChannelProxy(self)
     
-    def get_linked_message_proxy(self, request_id, timeout=None):
-        lmp = LinkedMessagesProxy(timeout)
-        self._linked_message_register[request_id] = lmp
-        return lmp
-
     def start_channel(self):
         self.transport.start()
         self._msg_reader_thread = Thread(target=self._incoming_msg_pump)
@@ -357,13 +314,6 @@ class MsgChannel:
             log.debug(f'Got incoming message {message}')
             if (isinstance(message, IncomingRequest) or isinstance(message, IncomingNotification)) and not message.callback_request_id:
                 self._dispatch(message)
-            elif isinstance(message, IncomingLinkedMessage):
-                lmp = self._linked_message_register.get(message.request_id)
-                if lmp:
-                    assert isinstance(lmp, LinkedMessagesProxy)
-                    lmp.process_linked_message(message)
-                else:
-                    log.error(f'Incoming Linked message {message} with invalid request id')
             else:
                 request_completed = False
                 if (isinstance(message, IncomingRequest) or isinstance(message, IncomingNotification)) and message.callback_request_id:
@@ -579,10 +529,6 @@ class ChannelProxy:
             for param_name, cb_info in message.callback_params.items():
                 self._callbacks[req_id][param_name] = cb_info
         return req_id
-    
-    def send_linked_message(self, message: OutgoingLinkedMessage, timeout=None):
-        self._send_message_wait_for_sent_event(message, timeout)
-
 
 
 class RequestProxy:

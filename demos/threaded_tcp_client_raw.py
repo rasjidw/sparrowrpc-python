@@ -131,19 +131,6 @@ def main(use_msgpack):
     result = proxy.send_request(req)
     print(f'Got result: {result}')
 
-
-    # FIXME: may remote this, as these seems almost identical to an IterableCallback with a multipart response. 
-    print('Calling multipart request')
-    req = OutgoingRequest('multipart_request', params={'start': 100})
-    result_watier = ResultWaiter()
-    req_id = proxy.send_request_raw_async(req, result_watier.process_msg)
-    for item in [10, 15, 15, 20]:
-        print(f'Sending {item}')
-        proxy.send_linked_message(OutgoingLinkedMessage(req_id, item))
-    proxy.send_linked_message(OutgoingLinkedMessage(req_id, final=FinalType.TERMINATOR))
-    result = result_watier.get_result()
-    print(f'Got result: {result}')
-
     print('Sleeping 2 on the main thread')
     time.sleep(2)
 

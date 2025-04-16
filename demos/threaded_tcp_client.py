@@ -130,21 +130,8 @@ def main(use_msgpack, use_websocket):
     result = channel.request.iterable_param(nums=iter_data)
     print(f'Got result: {result}')
 
-    # # probably remove multipart requests and just use streaming (multipart) iterable callbacks instead.
-    # proxy = channel.get_proxy()
-    # print('Calling multipart request')
-    # req = OutgoingRequest('multipart_request', params={'start': 100})
-    # result_watier = ResultWaiter()
-    # req_id = proxy.send_request_raw_async(req, result_watier.process_msg)
-    # for item in [10, 15, 15, 20]:
-    #     print(f'Sending {item}')
-    #     proxy.send_linked_message(OutgoingLinkedMessage(req_id, item))
-    # proxy.send_linked_message(OutgoingLinkedMessage(req_id, final=FinalType.TERMINATOR))
-    # result = result_watier.get_result()
-    # print(f'Got result: {result}')
-
-    # print('Sleeping 2 on the main thread')
-    # time.sleep(2)
+    print('Sleeping 2 on the main thread')
+    time.sleep(2)
 
     print('Waiting for backgroud thread')
     background_thread.join()

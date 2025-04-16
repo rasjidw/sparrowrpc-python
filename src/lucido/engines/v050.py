@@ -6,8 +6,8 @@ from ..core import FunctionRegister
 from ..serialisers import BaseSerialiser
 
 from ..engines import ProtocolEngineBase
-from ..core import OutgoingAcknowledge, OutgoingException, OutgoingLinkedMessage, OutgoingNotification, OutgoingRequest, OutgoingResponse
-from ..core import IncomingAcknowledge, IncomingException, IncomingLinkedMessage, IncomingNotification, IncomingRequest, IncomingResponse
+from ..core import OutgoingAcknowledge, OutgoingException, OutgoingNotification, OutgoingRequest, OutgoingResponse
+from ..core import IncomingAcknowledge, IncomingException, IncomingNotification, IncomingRequest, IncomingResponse
 from ..core import ControlMsg, RequestBase, RequestCallbackInfo, RequestType, ResponseType, MtpeExceptionCategory, MtpeExceptionInfo, IterableCallbackInfo
 from ..core import RequestType, ResponseType, FinalType
 from ..threaded import IterableCallbackProxy, CallbackProxy
@@ -25,7 +25,6 @@ class ProtocolEngine(ProtocolEngineBase):
                            'n': (IncomingNotification, 'target', None),
                            'p': (IncomingResponse, 'request_id', set('m')),
                            'x': (IncomingException, 'request_id', None),
-                           'l': (IncomingLinkedMessage, 'request_id', None),
                            'a': (IncomingAcknowledge, 'request_id', None)
                            }
     envelope_unique = set(envelope_marker_map.keys())
@@ -41,7 +40,6 @@ class ProtocolEngine(ProtocolEngineBase):
         self.message_id = 1
 
         self._make_map = {OutgoingRequest: self._make_out_request,
-                          OutgoingLinkedMessage: self._make_out_linked,
                           OutgoingNotification: self._make_out_notification,
                           OutgoingResponse: self._make_out_resp,
                           OutgoingException: self._make_out_except,
@@ -97,24 +95,7 @@ class ProtocolEngine(ProtocolEngineBase):
                 special_params_part = self.serialiser.serialise(special_params)
                 msg_parts.append(special_params_part)
         return '', msg_parts
-    
-    def _make_out_linked(self, message: OutgoingLinkedMessage, message_id: int|None):
-        marker = 'l'
-        if message.acknowledge:
-            marker += 'a'
-        if message.raw_binary:
-            marker += 'b'
-        if message.final:
-            marker += message.final
-        envelope_data = {marker: message.request_id}
-        if message_id:
-            envelope_data['i'] = message_id
-        msg_parts = [self.serialiser.serialise(envelope_data)]
-        if message.data:
-            param_part = self.serialiser.serialise(message.data) if message.data else b''
-            msg_parts.append(param_part)
-        return '', msg_parts
-    
+        
     def _make_out_notification(self, message: OutgoingNotification, message_id: int|None):
         marker_chrs = ['n']
         if message.raw_binary:
@@ -222,12 +203,6 @@ class ProtocolEngine(ProtocolEngineBase):
                 message.result = raw_contents[0]
             else:
                 message.result = self.serialiser.deserialise(raw_contents[0])
-            return message
-        if isinstance(message, IncomingLinkedMessage):
-            if message.raw_binary:
-                message.data = raw_contents[0]
-            else:
-                message.data = self.serialiser.deserialise(raw_contents[0]) if raw_contents[0] else None
             return message
         if isinstance(message, IncomingException):
             raw_except_data = self.serialiser.deserialise(raw_contents[0])
