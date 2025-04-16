@@ -21,8 +21,9 @@ from ..core import (RequestBase, ResponseType, FinalType, MessageSentEvent,
                        OutgoingRequest, OutgoingResponse, OutgoingNotification, OutgoingException, OutgoingAcknowledge,
                        IncomingRequest, IncomingResponse, IncomingNotification, IncomingException, IncomingAcknowledge,
                        FuncInfo, RequestCallbackInfo, IterableCallbackInfo,
-                         RequestType, MtpeExceptionCategory, MtpeExceptionInfo)
-from ..engines import ProtocolEngineBase
+                         RequestType, MtpeExceptionCategory, MtpeExceptionInfo, global_channel_register,
+                         MsgChannelBase)
+from ..core import ProtocolEngineBase
 
 from ..exceptions import CallerException, CalleeException
 from ..core import FunctionRegister, default_func_register
@@ -235,63 +236,15 @@ class ThreadPoolDispatcher(DispatcherBase):
         log.debug('Dispatcher shut down')
 
 
-
-class MsgChannelRegister:
-    def __init__(self):
-        self.channel_register = defaultdict(set)  # tag -> set of MsgChannels
-
-    def register(self, msg_channel: MsgChannel):
-        self.channel_register[msg_channel.tag].add(msg_channel)
-
-    def unregister(self, msg_channel: MsgChannel):
-        self.channel_register[msg_channel.tag].remove(msg_channel)
-        
-    def get_channels_by_tag(self, tag):
-        return frozenset(self.channel_register[tag])
-
-
-global_channel_register = MsgChannelRegister()
-
-
-class MsgChannel:
+class MsgChannel(MsgChannelBase):
     def __init__(self, transport: TransportBase, initiator: bool, engine: ProtocolEngineBase, dispatcher: DispatcherBase, channel_tag='', func_registers=None, channel_register=None):
+        MsgChannelBase.__init__(self, initiator, engine, channel_tag, func_registers, channel_register)
         self.transport = transport
-        self.initiator = initiator
-        self.engine = engine
         self.dispatcher = dispatcher
-        self.tag = channel_tag
-        self._channel_register = channel_register if channel_register else global_channel_register
-
         self.request = RequestProxyMaker(self)
-
-        self.system_register = self.engine.get_system_register()
-        self.registers = [self.system_register]
-
-        if func_registers:
-            if isinstance(func_registers, list):
-                for item in func_registers:
-                    if isinstance(item, FunctionRegister):
-                        self.registers.append(func_registers)
-                    else:
-                        raise TypeError()
-            elif isinstance(func_registers, FunctionRegister):
-                self.registers.append(func_registers)
-            else:
-                raise TypeError()
-        else:
-            self.registers.append(default_func_register)
-
-        self._message_id = 1
         self._message_id_lock = Lock()
-        self._linked_message_register = dict()  # message_id -> linked message proxy  # FIXME: remove this?
-
-        self._message_event_callbacks = dict()  # message_id -> callable
         self._msg_reader_thread = None
         
-    def add_register(self, func_register):
-        assert isinstance(func_register, FunctionRegister)
-        self.registers.append(func_register)
-
     def get_proxy(self):
         return ChannelProxy(self)
     
@@ -360,14 +313,6 @@ class MsgChannel:
                 error_msg = OutgoingException(message.id, exc_info=exc_info)
                 self._send_message(error_msg)
 
-    def _lookup_func_register(self, target, namespace):
-        for func_register in self.registers:
-            assert isinstance(func_register, FunctionRegister)
-            func_info = func_register.get_method_info(target, namespace)
-            if func_info:
-                return func_info
-        return None
-
     def _send_message(self, message, message_event_callback = None):
         add_id = self.engine.always_send_ids
         register_event_callback = False
@@ -399,12 +344,6 @@ class MsgChannel:
             message_event_callback(MessageSentEvent(message_id))
         return message_id
     
-    def _create_message_id(self):
-        with self._message_id_lock:
-            message_id = self._message_id
-            self._message_id += 1
-            return message_id
-
     def queue_message(self, message, message_event_callback: callable):
         return self._send_message(message, message_event_callback)
 
@@ -464,7 +403,7 @@ class ChannelProxy:
                     else:
                         yield event.result
                     return
-                elif event.response_type == RequestType.MUTIPART:
+                elif event.response_type == ResponseType.MULTIPART:
                     if event.final == FinalType.FINAL:
                         yield event.result
                         return

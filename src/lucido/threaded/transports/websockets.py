@@ -5,7 +5,7 @@ from threading import Thread
 import websockets.sync.client
 import websockets.sync.server
 
-from ...engines import ProtocolEngineBase
+from ...core import ProtocolEngineBase
 from ...threaded import MsgChannel
 from ..transports import TransportBase
 

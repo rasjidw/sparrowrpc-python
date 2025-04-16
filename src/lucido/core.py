@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 import inspect
@@ -13,6 +14,8 @@ if sys.version_info >= (3, 11):
     from enum import StrEnum
 else:
     from backports.strenum import StrEnum
+
+from binarychain import BinaryChain
 
 
 '''
@@ -27,7 +30,6 @@ class RequestType(StrEnum):
     NORMAL = ''
     QUIET = 'q'    # returns an empty response after the call is completed, unless there is an exception. (Like normal, but flagging that we don't want the result.)
     SILENT = 's'   # returns an empty response after call is *delivered*, unless there is an exception (transport error / invalid target).
-    MUTIPART = 'm' # multipart request - will be followed by linked messages.
     
 
 class ResponseType(StrEnum):
@@ -250,10 +252,87 @@ class FunctionRegister:
         except KeyError:
             return None
 
-
-
-
 default_func_register = FunctionRegister()
+
+
+
+class MsgChannelRegister:
+    def __init__(self):
+        self.channel_register = defaultdict(set)  # tag -> set of MsgChannels
+
+    def register(self, msg_channel: MsgChannelBase):
+        self.channel_register[msg_channel.tag].add(msg_channel)
+
+    def unregister(self, msg_channel: MsgChannelBase):
+        self.channel_register[msg_channel.tag].remove(msg_channel)
+        
+    def get_channels_by_tag(self, tag):
+        return frozenset(self.channel_register[tag])
+
+
+global_channel_register = MsgChannelRegister()
+
+
+class MsgChannelBase:
+    def __init__(self, initiator: bool, engine: ProtocolEngineBase, channel_tag='', func_registers=None, channel_register=None):
+        self.initiator = initiator
+        self.engine = engine
+        self.tag = channel_tag
+        self._channel_register = channel_register if channel_register else global_channel_register
+
+        self.system_register = self.engine.get_system_register()
+        self.registers = [self.system_register]
+
+        if func_registers:
+            if isinstance(func_registers, list):
+                for item in func_registers:
+                    if isinstance(item, FunctionRegister):
+                        self.registers.append(func_registers)
+                    else:
+                        raise TypeError()
+            elif isinstance(func_registers, FunctionRegister):
+                self.registers.append(func_registers)
+            else:
+                raise TypeError()
+        else:
+            self.registers.append(default_func_register)
+
+        self._message_id = 1
+        self._message_event_callbacks = dict()  # message_id -> callable
+
+    def add_register(self, func_register):
+        assert isinstance(func_register, FunctionRegister)
+        self.registers.append(func_register)
+
+    def _lookup_func_register(self, target, namespace):
+        for func_register in self.registers:
+            assert isinstance(func_register, FunctionRegister)
+            func_info = func_register.get_method_info(target, namespace)
+            if func_info:
+                return func_info
+        return None
+
+    def _create_message_id(self):
+        with self._message_id_lock:
+            message_id = self._message_id
+            self._message_id += 1
+            return message_id
+
+
+class ProtocolEngineBase(ABC):
+    @abstractmethod
+    def outgoing_message_to_binary_chain(self, message: RequestBase, message_id: int):
+        raise NotImplementedError()
+    
+    @abstractmethod
+    def parse_incoming_envelope(self, incoming_bin_chain: BinaryChain):
+        raise NotImplementedError()
+    
+    @abstractmethod
+    def parse_incoming_message(self, incoming_bin_chain: BinaryChain):
+        raise NotImplementedError()
+
+
 
 # decorators
 

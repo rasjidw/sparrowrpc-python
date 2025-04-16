@@ -5,7 +5,7 @@ from binarychain import BinaryChain
 from ..core import FunctionRegister
 from ..serialisers import BaseSerialiser
 
-from ..engines import ProtocolEngineBase
+from ..core import ProtocolEngineBase
 from ..core import OutgoingAcknowledge, OutgoingException, OutgoingNotification, OutgoingRequest, OutgoingResponse
 from ..core import IncomingAcknowledge, IncomingException, IncomingNotification, IncomingRequest, IncomingResponse
 from ..core import ControlMsg, RequestBase, RequestCallbackInfo, RequestType, ResponseType, MtpeExceptionCategory, MtpeExceptionInfo, IterableCallbackInfo

@@ -16,7 +16,7 @@ from queue import Queue
 from binarychain import BinaryChain, ChainReader
 
 
-from ...engines import ProtocolEngineBase
+from ...core import ProtocolEngineBase
 
 from ...threaded import MsgChannel, TransportBase
 
