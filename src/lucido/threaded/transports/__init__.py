@@ -240,17 +240,14 @@ class TcpListener:
 
 
 class StreamTransport(TransportBase):
-    def __init__(self, incoming_stream, outgoing_stream, engine, max_msg_size=10*1024*1024, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, read_buf_size=1):
+    def __init__(self, incoming_stream, outgoing_stream, engine, max_msg_size=10*1024*1024, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, read_buf_size=8192):
         TransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size)
         self.incoming_stream = incoming_stream
         self.outgoing_stream = outgoing_stream
 
     def _read_data(self, size):
         try:
-            return self.incoming_stream.read(size)
-            # data = self.incoming_stream.read(size)
-            # log.debug(f'Read from incoming stream: {data!s}')
-            # return data
+            return self.incoming_stream.read1(size)  # use read1 so we don't block waiting for 'more' data
         except Exception as e:
             log.debug(f'Error reading from incoming stream in PID {os.getpid()}: {str(e)}')
             return None
