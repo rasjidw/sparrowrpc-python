@@ -59,27 +59,41 @@ class TransportBase(ABC):
 
     def _reader(self):
         while True:
-            data = self._read_data(self.read_buf_size)
-            if data:
-                for incoming_chain in self.chain_reader.get_binary_chains(data):
-                    self.incoming_queue.put(incoming_chain)
-            else:
+            try:
+                data = self._read_data(self.read_buf_size)
+                if data:
+                    for incoming_chain in self.chain_reader.get_binary_chains(data):
+                        self.incoming_queue.put(incoming_chain)
+                else:
+                    break
+            except Exception as e:
+                log.warning(f'Reader aborting with exception {e!s}')
                 break
         self.remote_closed = True
         self.incoming_queue.put(None)
 
     def _writer(self):
         while True:
-            chain, notifier_queue = self.outgoing_queue.get()
-            assert isinstance(chain, BinaryChain)
-            assert isinstance(notifier_queue, Queue)
-            e = None  # return None if not exception
-            try:
-                data = chain.serialise()
-                self._write_data(data)
-            except Exception as exc:
-                e = exc
-            notifier_queue.put(e)
+            time_to_stop = self._writer_send_one()
+            if time_to_stop:
+                break
+
+    def _writer_send_one(self):
+        queue_data = self.outgoing_queue.get()
+        if queue_data is None:
+            return True
+        
+        chain, notifier_queue = queue_data
+        assert isinstance(chain, BinaryChain)
+        assert isinstance(notifier_queue, Queue)
+        e = None  # return None if not exception
+        try:
+            data = chain.serialise()
+            self._write_data(data)
+        except Exception as exc:
+            e = exc
+        notifier_queue.put(e)
+        return False
 
     def get_binary_chains(self):
         while True:
