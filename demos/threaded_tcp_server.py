@@ -12,8 +12,8 @@ from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
 from lucido.exceptions import InvalidParams
 
 from lucido.threaded import ThreadedDispatcher, ThreadedMsgChannel, ThreadedMsgChannelInjector, ThreadedCallbackProxy
-from lucido.threaded.transports import TcpListener
-from lucido.threaded.transports.websockets import WebsocketListener
+from lucido.threaded.transports import ThreadedTcpListener
+from lucido.threaded.transports.websockets import ThreadedWebsocketListener
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
@@ -98,11 +98,11 @@ def main():
     dispatcher = ThreadedDispatcher(num_threads=5)
     if args.websocket:
         print('Running websocket server on 6000')
-        websocket_server = WebsocketListener(engine_choicies, dispatcher)
+        websocket_server = ThreadedWebsocketListener(engine_choicies, dispatcher)
         websocket_server.run_server('0.0.0.0', 6000)
     else:
         print('Running tcp server on 5000')
-        tcp_server = TcpListener(engine_choicies, dispatcher)
+        tcp_server = ThreadedTcpListener(engine_choicies, dispatcher)
         tcp_server.run_server('0.0.0.0', 5000)
     dispatcher.shutdown()
 

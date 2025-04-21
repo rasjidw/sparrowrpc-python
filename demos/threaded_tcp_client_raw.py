@@ -14,8 +14,8 @@ from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
 from lucido.core import IncomingResponse, IncomingException, OutgoingRequest, RequestCallbackInfo, OutgoingLinkedMessage, FinalType, IterableCallbackInfo
 from lucido.engines.v050 import ProtocolEngine
 
-from lucido.threaded import ThreadPoolDispatcher
-from lucido.threaded.transports import TcpConnector
+from lucido.threaded import ThreadedDispatcher
+from lucido.threaded.transports import ThreadedTcpConnector
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
@@ -85,8 +85,8 @@ def main(use_msgpack):
     else:
         serialiser = JsonSerialiser()
     engine = ProtocolEngine(serialiser)
-    dispatcher = ThreadPoolDispatcher(num_threads=5)
-    connector = TcpConnector(engine, dispatcher)
+    dispatcher = ThreadedDispatcher(num_threads=5)
+    connector = ThreadedTcpConnector(engine, dispatcher)
     channel = connector.connect('127.0.0.1', 5000)
     channel.start_channel()
     

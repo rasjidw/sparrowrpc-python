@@ -2,8 +2,10 @@
 import logging
 from threading import Thread
 
-import websockets.sync.client
-import websockets.sync.server
+from websockets.sync import client
+from websockets.sync import server
+
+import websockets.exceptions
 
 from ...core import ProtocolEngineBase
 from ...threaded import ThreadedMsgChannel
@@ -13,7 +15,7 @@ from ..transports import ThreadedTransportBase
 log = logging.getLogger(__name__)
 
 
-class WebsocketTransport(ThreadedTransportBase):
+class ThreadedWebsocketTransport(ThreadedTransportBase):
     def __init__(self, engine, websocket, max_msg_size=10*1024*1024, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
         ThreadedTransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.websocket = websocket
@@ -32,7 +34,7 @@ class WebsocketTransport(ThreadedTransportBase):
         self.websocket.close()
 
     
-class WebsocketConnector:
+class ThreadedWebsocketConnector:
     def __init__(self, engine, dispatcher, func_registers=None, handshake_cls=None):
         self.engine = engine
         self.dispatcher = dispatcher
@@ -40,12 +42,12 @@ class WebsocketConnector:
         self.initiator = True
 
     def connect(self, ws_uri):
-        websocket = websockets.sync.client.connect(ws_uri)
-        transport = WebsocketTransport(self.engine, websocket)  # FIX_ME: Allow options to be set / passed in??
+        websocket = client.connect(ws_uri)
+        transport = ThreadedWebsocketTransport(self.engine, websocket)  # FIX_ME: Allow options to be set / passed in??
         return ThreadedMsgChannel(transport, initiator=self.initiator, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
-class WebsocketListener:
+class ThreadedWebsocketListener:
     def __init__(self, engine_choices, dispatcher, func_registers=None):
         if isinstance(engine_choices, ProtocolEngineBase):
             self.engine_choices = [engine_choices]
@@ -64,7 +66,7 @@ class WebsocketListener:
         self.time_to_stop = False
 
     def run_server(self, bind_address, port):
-        with websockets.sync.server.serve(self._websocket_handler, bind_address, port) as self.websocket_server: 
+        with server.serve(self._websocket_handler, bind_address, port) as self.websocket_server: 
             log.info(f'Listing on {bind_address}:{port}')
             try:
                 self.websocket_server.serve_forever()
@@ -87,7 +89,7 @@ class WebsocketListener:
         engine = self.engine_lookup.get(requested_engine_sig)
         if engine:
             log.info(f'Accepted connection request from {remote_address} with path {websocket_path}')
-            transport = WebsocketTransport(engine, client_websocket)
+            transport = ThreadedWebsocketTransport(engine, client_websocket)
             channel = ThreadedMsgChannel(transport, initiator=False, engine=engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             channel.start_channel()

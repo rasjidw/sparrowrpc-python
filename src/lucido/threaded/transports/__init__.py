@@ -7,11 +7,11 @@ import logging
 import os
 import socket
 import sys
-from threading import Thread, Lock, current_thread, Event
+from threading import current_thread
+from threading import Thread, Lock, Event
+from queue import Queue, Empty as QueueEmpty
 from traceback import format_exc
 from typing import Any
-import queue
-from queue import Queue
 
 from binarychain import BinaryChain, ChainReader
 
@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 
 # Initiator always sends lists, the first entry being the 'command'
 # The acceptor always sends dicts back.
-class TcpHandshake:
+class ThreadedTcpHandshake:
     BC_PREFIX = 'HS'
     SET_ENGINE = 'SET_ENGINE'
     REQUEST_CHOICES = 'REQUEST_CHOICES'
@@ -145,7 +145,7 @@ class TcpHandshake:
         return [engine.get_engine_signature() for engine in self.engine_choices]
 
 
-class TcpTransport(ThreadedTransportBase):
+class ThreadedTcpTransport(ThreadedTransportBase):
     def __init__(self, engine, conn_socket: socket.socket, max_msg_size=10*1024*1024, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
         ThreadedTransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.socket = conn_socket
@@ -162,7 +162,7 @@ class TcpTransport(ThreadedTransportBase):
         self.socket.close()
 
     
-class TcpConnector:
+class ThreadedTcpConnector:
     def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
         if isinstance(engine_choices, ProtocolEngineBase):
             self.engine_choices = [engine_choices]
@@ -170,7 +170,7 @@ class TcpConnector:
             self.engine_choices = engine_choices
         self.dispatcher = dispatcher
         self.func_registers = func_registers
-        self.handshake_cls = handshake_cls if handshake_cls else TcpHandshake 
+        self.handshake_cls = handshake_cls if handshake_cls else ThreadedTcpHandshake
         self.initiator = True
     def connect(self, host, port):
         conn_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -179,13 +179,13 @@ class TcpConnector:
         handshake = self.handshake_cls(conn_socket, self.initiator, self.engine_choices)
         handshake.start_handshake()
         if handshake.engine_selected:
-            transport = TcpTransport(handshake.engine_selected, conn_socket)  # FIX_ME: Allow options to be set / passed in??
+            transport = ThreadedTcpTransport(handshake.engine_selected, conn_socket)  # FIX_ME: Allow options to be set / passed in??
             return ThreadedMsgChannel(transport, initiator=self.initiator, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
         else:
             raise RuntimeError('No engine set')
 
 
-class TcpListener:
+class ThreadedTcpListener:
     def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
         if isinstance(engine_choices, ProtocolEngineBase):
             self.engine_choices = [engine_choices]
@@ -193,7 +193,7 @@ class TcpListener:
             self.engine_choices = engine_choices
         self.dispatcher = dispatcher
         self.func_registers = func_registers
-        self.handshake_cls = handshake_cls if handshake_cls else TcpHandshake 
+        self.handshake_cls = handshake_cls if handshake_cls else ThreadedTcpHandshake
         self.initiator = False
         self.tcp_server = None
         self.address = None
@@ -233,7 +233,7 @@ class TcpListener:
         handshake = self.handshake_cls(client_socket, self.initiator, self.engine_choices)
         handshake.start_handshake()
         if handshake.engine_selected:
-            transport = TcpTransport(handshake.engine_selected, client_socket)
+            transport = ThreadedTcpTransport(handshake.engine_selected, client_socket)
             channel = ThreadedMsgChannel(transport, initiator=False, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             channel.start_channel()

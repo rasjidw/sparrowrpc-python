@@ -11,8 +11,8 @@ from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
 from lucido.engines import v050, _jsonrpc2l
 
 from lucido.threaded import ThreadedDispatcher
-from lucido.threaded.transports import TcpConnector
-from lucido.threaded.transports.websockets import WebsocketConnector
+from lucido.threaded.transports import ThreadedTcpConnector
+from lucido.threaded.transports.websockets import ThreadedWebsocketConnector
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
@@ -80,12 +80,12 @@ def main(engine_choice, use_websocket):
         
     dispatcher = ThreadedDispatcher(num_threads=5)
     if use_websocket:
-        connector = WebsocketConnector(engine, dispatcher)
+        connector = ThreadedWebsocketConnector(engine, dispatcher)
         engine_sig = engine.get_engine_signature()
         uri = f'ws://127.0.0.1:6000/{engine_sig}'
         channel = connector.connect(uri)
     else:
-        connector = TcpConnector(engine, dispatcher)
+        connector = ThreadedTcpConnector(engine, dispatcher)
         channel = connector.connect('127.0.0.1', 5000)
     channel.start_channel()
 
