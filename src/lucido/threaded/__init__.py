@@ -10,9 +10,9 @@ import socket
 import sys
 from threading import current_thread
 from threading import Thread, Lock, Event
+from queue import Queue, Empty as QueueEmpty
 from traceback import format_exc
 from typing import Any, TYPE_CHECKING
-from queue import Queue, Empty as QueueEmpty
 
 from binarychain import BinaryChain, ChainReader
 
