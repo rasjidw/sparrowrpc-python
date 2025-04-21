@@ -10,7 +10,6 @@ from ..core import OutgoingAcknowledge, OutgoingException, OutgoingNotification,
 from ..core import IncomingAcknowledge, IncomingException, IncomingNotification, IncomingRequest, IncomingResponse
 from ..core import ControlMsg, RequestBase, RequestCallbackInfo, RequestType, ResponseType, MtpeExceptionCategory, MtpeExceptionInfo, IterableCallbackInfo
 from ..core import RequestType, ResponseType, FinalType, ResponseBase
-from ..threaded import IterableCallbackProxy, CallbackProxy
 
 from ..exceptions import ProtocolError
 

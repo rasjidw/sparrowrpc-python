@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from collections.abc import Iterable
+from typing import Iterable
 import json
 import logging
 import os
 import socket
 import sys
-from threading import Thread, Lock, current_thread, Event
+from threading import current_thread
+from threading import Thread, Lock, Event
 from traceback import format_exc
 from typing import Any, TYPE_CHECKING
-import queue
-from queue import Queue
+from queue import Queue, Empty as QueueEmpty
 
 from binarychain import BinaryChain, ChainReader
 
@@ -32,7 +32,7 @@ from ..core import FunctionRegister, default_func_register
 log = logging.getLogger(__name__)
 
 
-class TransportBase(ABC):
+class ThreadedTransportBase(ABC):
     def __init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size=8192):
         assert isinstance(engine, ProtocolEngineBase)
         self.engine = engine
@@ -121,7 +121,7 @@ class TransportBase(ABC):
         raise NotImplementedError()
 
 
-class DispatcherBase(ABC):
+class ThreadedDispatcherBase(ABC):
     @abstractmethod
     def dispatch_incoming(self, msg_channel: ThreadedMsgChannel, request: RequestBase, func_info: FuncInfo):
         raise NotImplementedError()
@@ -130,12 +130,12 @@ class DispatcherBase(ABC):
         raise NotImplementedError()
 
 
-def call_func(msg_channel: ThreadedMsgChannel, incoming_msg: IncomingRequest|IncomingNotification, func_info: FuncInfo):
+def threaded_call_func(msg_channel: ThreadedMsgChannel, incoming_msg: IncomingRequest|IncomingNotification, func_info: FuncInfo):
     params = dict()
     injectors = list()
     if func_info.injectable_params:
         for param_name, injector_cls in func_info.injectable_params.items():
-            assert issubclass(injector_cls, InjectorBase)
+            assert issubclass(injector_cls, ThreadedInjectorBase)
             injector = injector_cls(msg_channel, incoming_msg, func_info)
             injectors.append(injector)
             injector.pre_call_setup()
@@ -159,20 +159,20 @@ def call_func(msg_channel: ThreadedMsgChannel, incoming_msg: IncomingRequest|Inc
                 params[param_name] = cb_proxy
         result = func_info.func(**params)
     for injector in injectors:
-        assert isinstance(injector, InjectorBase)
+        assert isinstance(injector, ThreadedInjectorBase)
         injector.post_call_cleanup()
     return result
 
-def run_request_wait_to_complete(msg_channel: ThreadedMsgChannel, request: IncomingRequest, func_info: FuncInfo):
+def threaded_run_request_wait_to_complete(msg_channel: ThreadedMsgChannel, request: IncomingRequest, func_info: FuncInfo):
     try:
         if func_info.multipart_reponse:
-            for part_result in call_func(msg_channel, request, func_info):
+            for part_result in threaded_call_func(msg_channel, request, func_info):
                 outgoing_msg = OutgoingResponse(request_id=request.id, result=part_result, response_type=ResponseType.MULTIPART)
                 msg_channel._send_message(outgoing_msg)
             final_response = OutgoingResponse(request_id=request.id, response_type=ResponseType.MULTIPART, final=FinalType.TERMINATOR)
             msg_channel._send_message(final_response)
         else:
-            result = call_func(msg_channel, request, func_info)
+            result = threaded_call_func(msg_channel, request, func_info)
             if request.request_type == RequestType.QUIET:
                 # never send the result to quiet requests.
                 result = None
@@ -190,32 +190,32 @@ def run_request_wait_to_complete(msg_channel: ThreadedMsgChannel, request: Incom
             outgoing_msg = OutgoingException(request_id=request.id, exc_info=exc_info) 
         msg_channel._send_message(outgoing_msg)
 
-def run_request_not_waiting(msg_channel: ThreadedMsgChannel, request: IncomingRequest|IncomingNotification, func_info: FuncInfo):
+def threaded_run_request_not_waiting(msg_channel: ThreadedMsgChannel, request: IncomingRequest|IncomingNotification, func_info: FuncInfo):
     try:
         # we send a response (with no data) to slient requests (before calling the function), but nothing for notifications.
         if isinstance(request, IncomingRequest) and request.request_type == RequestType.SILENT:
             outgoing_msg = OutgoingResponse(request_id=request.id)
             msg_channel._send_message(outgoing_msg)
 
-        call_func(msg_channel, request, func_info)
+        threaded_call_func(msg_channel, request, func_info)
     except Exception as e:
         # FIXME - make notification and slient errors available to the client software
         log.warning(f'Notification or Silent Request {request} raised error {str(e)}')
 
 
-def dispatch_request_or_notification(msg_channel, incoming_msg, func_info):
+def threaded_dispatch_request_or_notification(msg_channel, incoming_msg, func_info):
     if isinstance(incoming_msg, IncomingRequest):
         if incoming_msg.request_type == RequestType.SILENT:
-            run_request_not_waiting(msg_channel, incoming_msg, func_info)
+            threaded_run_request_not_waiting(msg_channel, incoming_msg, func_info)
         else:
-            run_request_wait_to_complete(msg_channel, incoming_msg, func_info)
+            threaded_run_request_wait_to_complete(msg_channel, incoming_msg, func_info)
     elif isinstance(incoming_msg, IncomingNotification):
-        run_request_not_waiting(msg_channel, incoming_msg, func_info)
+        threaded_run_request_not_waiting(msg_channel, incoming_msg, func_info)
     else:
         log.warning(f'Got unhandled message {incoming_msg}')
 
 
-class ThreadPoolDispatcher(DispatcherBase):
+class ThreadedDispatcher(ThreadedDispatcherBase):
     def __init__(self, num_threads, queue_size=10):
         if num_threads < 1:
             raise ValueError('num_threads must be at least 1')
@@ -231,9 +231,9 @@ class ThreadPoolDispatcher(DispatcherBase):
         while not self.time_to_stop:
             try:
                 msg_channel, incoming_msg, func_info = self.incoming_queue.get(timeout=1)
-            except queue.Empty:
+            except QueueEmpty:
                 continue
-            dispatch_request_or_notification(msg_channel, incoming_msg, func_info)
+            threaded_dispatch_request_or_notification(msg_channel, incoming_msg, func_info)
         log.debug(f'Dispatch worker in thread {current_thread().name} finished.')
 
 
@@ -251,16 +251,16 @@ class ThreadPoolDispatcher(DispatcherBase):
 
 
 class ThreadedMsgChannel(MsgChannelBase):
-    def __init__(self, transport: TransportBase, initiator: bool, engine: ProtocolEngineBase, dispatcher: DispatcherBase, channel_tag='', func_registers=None, channel_register=None):
+    def __init__(self, transport: ThreadedTransportBase, initiator: bool, engine: ProtocolEngineBase, dispatcher: ThreadedDispatcherBase, channel_tag='', func_registers=None, channel_register=None):
         MsgChannelBase.__init__(self, initiator, engine, channel_tag, func_registers, channel_register)
         self.transport = transport
         self.dispatcher = dispatcher
-        self.request = RequestProxyMaker(self)
+        self.request = ThreadedRequestProxyMaker(self)
         self._message_id_lock = Lock()
         self._msg_reader_thread = None
         
     def get_proxy(self):
-        return ChannelProxy(self)
+        return ThreadedChannelProxy(self)
     
     def start_channel(self):
         self.transport.start()
@@ -326,7 +326,7 @@ class ThreadedMsgChannel(MsgChannelBase):
 
 
 # FIXME: Test timeouts!
-class ChannelProxy:
+class ThreadedChannelProxy:
     def __init__(self, channel: ThreadedMsgChannel):
         self.channel = channel
 
@@ -340,7 +340,7 @@ class ChannelProxy:
         while True:
             try:
                 event = return_queue.get(timeout=1)
-            except queue.Empty:
+            except QueueEmpty:
                 count += 1
                 if timeout and count > timeout:
                     raise RuntimeError('TIMEOUT')  # FIXME. We should at least clean up incoming registers etc. Do we notify the callee?
@@ -387,7 +387,7 @@ class ChannelProxy:
                         def iter_func():
                             return next(cb_info.iter)
                         func_info = FuncInfo(event.target, None, None, None, False, iter_func, is_iterable_callback=True)
-                    dispatch_request_or_notification(self.channel, event, func_info)
+                    threaded_dispatch_request_or_notification(self.channel, event, func_info)
                 except KeyError:
                     log.error(f'No callback found for incoming callback request {event}')
                 continue
@@ -436,7 +436,7 @@ class ChannelProxy:
         return req_id
 
 
-class RequestProxy:
+class ThreadedRequestProxy:
     def __init__(self, msg_channel: ThreadedMsgChannel, target: str, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
         self._msg_channel = msg_channel
         self._target = target
@@ -468,7 +468,7 @@ class RequestProxy:
             return channel_proxy.send_request(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
     
 
-class RequestProxyMaker:
+class ThreadedRequestProxyMaker:
     def __init__(self, msg_channel: ThreadedMsgChannel, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
         self._msg_channel = msg_channel
         self._namespace = namespace
@@ -480,10 +480,10 @@ class RequestProxyMaker:
         self._multipart_reponse = multipart_reponse
 
     def __getattr__(self, target):
-        return RequestProxy(self._msg_channel, target, self._namespace, self._node, self._request_type, self._timeout, self._msg_sent_callback, self._ack_callback, self._multipart_reponse)
+        return ThreadedRequestProxy(self._msg_channel, target, self._namespace, self._node, self._request_type, self._timeout, self._msg_sent_callback, self._ack_callback, self._multipart_reponse)
     
     def __call__(self, namespace: str=None, node: str=None, request_type: RequestType = RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
-        return RequestProxyMaker(self._msg_channel, namespace, node, request_type, timeout, msg_sent_callback, ack_callback, multipart_reponse)
+        return ThreadedRequestProxyMaker(self._msg_channel, namespace, node, request_type, timeout, msg_sent_callback, ack_callback, multipart_reponse)
 
 
 
@@ -500,7 +500,7 @@ class CallbackProxyBase:
         self._channel = channel
 
 
-class CallbackProxy(CallbackProxyBase):
+class ThreadedCallbackProxy(CallbackProxyBase):
     def __init__(self, cb_param_name, callback_request_id):
         CallbackProxyBase.__init__(self, cb_param_name, callback_request_id)
         self.request_type = None  # can be changed before sending / FIXME: how we do set a default?
@@ -527,7 +527,7 @@ class CallbackProxy(CallbackProxyBase):
 
 
 
-class IterableCallbackProxy(Iterable, CallbackProxyBase):
+class ThreadedIterableCallbackProxy(Iterable, CallbackProxyBase):
     def __init__(self, cb_param_name, callback_request_id):
         CallbackProxyBase.__init__(self, cb_param_name, callback_request_id)
         self._final = False
@@ -551,7 +551,7 @@ class IterableCallbackProxy(Iterable, CallbackProxyBase):
 
 
 
-class InjectorBase(ABC):    
+class ThreadedInjectorBase(ABC):    
     # FIXME: create base MsgChannel in core so we can assert this is a MsgChannel here.
     def __init__(self, msg_channel, incoming_request: RequestBase, func_info: FuncInfo):
         self.msg_channel = msg_channel
@@ -571,7 +571,7 @@ class InjectorBase(ABC):
         raise NotImplementedError
 
 
-class MsgChannelInjector(InjectorBase):
+class ThreadedMsgChannelInjector(ThreadedInjectorBase):
     def pre_call_setup(self):
         pass
 

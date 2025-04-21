@@ -8,7 +8,7 @@ from threading import current_thread
 
 from lucido.core import make_export_decorator
 from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
-from lucido.threaded import ThreadPoolDispatcher, CallbackProxy
+from lucido.threaded import ThreadedDispatcher, ThreadedCallbackProxy
 from lucido.engines.v050 import ProtocolEngine
 from lucido.threaded.transports import ChildSubprocessRunner
 
@@ -30,7 +30,7 @@ def hello_world(name=None):
 
 
 @export
-def slow_counter(count_to: int, delay: int = 0.5, progress: CallbackProxy = None):
+def slow_counter(count_to: int, delay: int = 0.5, progress: ThreadedCallbackProxy = None):
     if progress:
         progress.set_to_notification()
     for x in range(count_to):
@@ -51,7 +51,7 @@ def main(use_msgpack):
     msgpack_engine = ProtocolEngine(MsgpackSerialiser())
     engine = msgpack_engine if use_msgpack else json_engine
     
-    dispatcher = ThreadPoolDispatcher(num_threads=5)
+    dispatcher = ThreadedDispatcher(num_threads=5)
     server = ChildSubprocessRunner(engine, dispatcher)
     channel = server.get_channel()
     channel.start_channel()

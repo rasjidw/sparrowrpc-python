@@ -10,7 +10,7 @@ from ..core import OutgoingAcknowledge, OutgoingException, OutgoingNotification,
 from ..core import IncomingAcknowledge, IncomingException, IncomingNotification, IncomingRequest, IncomingResponse
 from ..core import ControlMsg, RequestBase, RequestCallbackInfo, RequestType, ResponseType, MtpeExceptionCategory, MtpeExceptionInfo, IterableCallbackInfo
 from ..core import RequestType, ResponseType, FinalType
-from ..threaded import IterableCallbackProxy, CallbackProxy
+from ..threaded import ThreadedIterableCallbackProxy, ThreadedCallbackProxy  # FIXME! These should not be in the engine!
 
 from ..exceptions import ProtocolError
 
@@ -184,10 +184,10 @@ class ProtocolEngine(ProtocolEngineBase):
                 cb_params = dict()
                 raw_std_cb_params = special_params_dict.get('#cb', dict())
                 for (param_name, info) in raw_std_cb_params.items():   # FIXME: currently ignoring info
-                    cb_params[param_name] = CallbackProxy(param_name, message.id)
+                    cb_params[param_name] = ThreadedCallbackProxy(param_name, message.id)  # FIXME: We will need some kind of maker that resolves this to threaded or async after dispatch
                 raw_iter_cb_params = special_params_dict.get('#icb', dict())
                 for (param_name, info) in raw_iter_cb_params.items():
-                    cb_params[param_name] = IterableCallbackProxy(param_name, message.id)
+                    cb_params[param_name] = ThreadedIterableCallbackProxy(param_name, message.id)  # FIXME: We will need some kind of maker that resolves this to threaded or async after dispatch
                 message.callback_params = cb_params
             return message
         if isinstance(message, IncomingNotification):

@@ -11,7 +11,7 @@ from lucido.engines.v050 import ProtocolEngine
 from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
 from lucido.exceptions import InvalidParams
 
-from lucido.threaded import ThreadPoolDispatcher, ThreadedMsgChannel, MsgChannelInjector, CallbackProxy
+from lucido.threaded import ThreadedDispatcher, ThreadedMsgChannel, ThreadedMsgChannelInjector, ThreadedCallbackProxy
 from lucido.threaded.transports import TcpListener
 from lucido.threaded.transports.websockets import WebsocketListener
 
@@ -33,7 +33,7 @@ def hello_world(name=None):
 
 
 @export
-def slow_counter(count_to: int, delay: int = 0.5, progress: CallbackProxy = None):
+def slow_counter(count_to: int, delay: int = 0.5, progress: ThreadedCallbackProxy = None):
     if progress:
         progress.set_to_notification()
     for x in range(count_to):
@@ -50,7 +50,7 @@ def multipart_response(count_to: int):
     for x in range(count_to):
         yield (x, x+1)
 
-@export(injectable_params=dict(channel=MsgChannelInjector))
+@export(injectable_params=dict(channel=ThreadedMsgChannelInjector))
 def iterable_param(nums, channel):
     assert isinstance(channel, ThreadedMsgChannel)
     count = 0
@@ -95,7 +95,7 @@ def main():
     msgpack_engine = ProtocolEngine(MsgpackSerialiser())
     engine_choicies = [msgpack_engine, json_engine]
     
-    dispatcher = ThreadPoolDispatcher(num_threads=5)
+    dispatcher = ThreadedDispatcher(num_threads=5)
     if args.websocket:
         print('Running websocket server on 6000')
         websocket_server = WebsocketListener(engine_choicies, dispatcher)

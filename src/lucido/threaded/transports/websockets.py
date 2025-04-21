@@ -7,15 +7,15 @@ import websockets.sync.server
 
 from ...core import ProtocolEngineBase
 from ...threaded import ThreadedMsgChannel
-from ..transports import TransportBase
+from ..transports import ThreadedTransportBase
 
 
 log = logging.getLogger(__name__)
 
 
-class WebsocketTransport(TransportBase):
+class WebsocketTransport(ThreadedTransportBase):
     def __init__(self, engine, websocket, max_msg_size=10*1024*1024, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
-        TransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
+        ThreadedTransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.websocket = websocket
 
     def _read_data(self, size):

@@ -18,7 +18,7 @@ from binarychain import BinaryChain, ChainReader
 
 from ...core import ProtocolEngineBase
 
-from ...threaded import ThreadedMsgChannel, TransportBase
+from ...threaded import ThreadedMsgChannel, ThreadedTransportBase
 
 
 log = logging.getLogger(__name__)
@@ -145,9 +145,9 @@ class TcpHandshake:
         return [engine.get_engine_signature() for engine in self.engine_choices]
 
 
-class TcpTransport(TransportBase):
+class TcpTransport(ThreadedTransportBase):
     def __init__(self, engine, conn_socket: socket.socket, max_msg_size=10*1024*1024, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
-        TransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
+        ThreadedTransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.socket = conn_socket
 
     def _read_data(self, size):
@@ -239,9 +239,9 @@ class TcpListener:
             channel.start_channel()
 
 
-class StreamTransport(TransportBase):
+class StreamTransport(ThreadedTransportBase):
     def __init__(self, incoming_stream, outgoing_stream, engine, max_msg_size=10*1024*1024, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, read_buf_size=8192):
-        TransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size)
+        ThreadedTransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size)
         self.incoming_stream = incoming_stream
         self.outgoing_stream = outgoing_stream
 
