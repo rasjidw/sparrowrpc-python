@@ -46,7 +46,11 @@ class TextCooker:
 
             parts = raw_line.rsplit('#=', 1)
             if len(parts) == 1:
-                out_lines.append(raw_line)
+                if self.group_mode:
+                    if self.group_mode == self.mode:
+                        out_lines.append(raw_line)
+                else:
+                    out_lines.append(raw_line)
                 continue
 
             line = parts[0].rstrip()
@@ -69,9 +73,13 @@ class TextCooker:
                 out_lines.append(raw_line)
                 continue
 
-            out_line = self.process_line(line, target, flag)
-            if out_line:
-                out_lines.append(out_line)
+            try:
+                out_line = self.process_line(line, target, flag)
+                if out_line:
+                    out_lines.append(out_line)
+            except ValueError:
+                print(f'*** Value Error in line {line_no} ***')
+                raise
         self.current_text = '\n'.join(out_lines)
 
     def process_line(self, line, target, flag):
@@ -95,8 +103,10 @@ class TextCooker:
             # no other flags besides remove are valid in group mode
             if target:
                 raise ValueError(f'Invalid target {target} in group mode')
-            if self.group_mode == self.mode:
-                return line
+            # if self.group_mode == self.mode:
+            #     return line
+            # else:
+            #     return None
         if target == self.mode:
             if flag == '<':
                 if line.startswith(' '*4):
@@ -129,7 +139,11 @@ class ThreadedFromAsyncUpdater:
         dst = self.asyc_dir / rel_path
         print(src, '-->', dst)        
         orig = open(src).read()
-        cooked = self.cook(orig, self.async_str)
+        try:
+            cooked = self.cook(orig, self.async_str)
+        except ValueError:
+            print(f'*** Error in file {src} ***')
+            raise
         dst.parent.mkdir(exist_ok=True)
         with open(dst, 'w') as f:
             f.write(cooked)
