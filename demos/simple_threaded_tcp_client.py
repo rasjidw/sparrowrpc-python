@@ -10,7 +10,7 @@ from lucido.core import make_export_decorator, IncomingResponse, IncomingExcepti
 from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
 from lucido.engines import v050, _jsonrpc2l
 
-from lucido.threaded import ThreadPoolDispatcher
+from lucido.threaded import ThreadedDispatcher
 from lucido.threaded.transports import TcpConnector
 from lucido.threaded.transports.websockets import WebsocketConnector
 
@@ -78,7 +78,7 @@ def main(engine_choice, use_websocket):
             serialiser = JsonSerialiser()
         engine = v050.ProtocolEngine(serialiser)
         
-    dispatcher = ThreadPoolDispatcher(num_threads=5)
+    dispatcher = ThreadedDispatcher(num_threads=5)
     if use_websocket:
         connector = WebsocketConnector(engine, dispatcher)
         engine_sig = engine.get_engine_signature()

@@ -12,7 +12,7 @@ from lucido.engines import v050, _jsonrpc2l
 from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
 from lucido.exceptions import InvalidParams
 
-from lucido.threaded import ThreadPoolDispatcher, ThreadedMsgChannel
+from lucido.threaded import ThreadedDispatcher, ThreadedMsgChannel
 from lucido.threaded.transports import TcpListener
 from lucido.threaded.transports.websockets import WebsocketListener
 
@@ -58,7 +58,7 @@ def main():
     jsonrpc2l_engine = _jsonrpc2l.ProtocolEngine()
     engine_choicies = [msgpack_engine, json_engine, jsonrpc2l_engine]
     
-    dispatcher = ThreadPoolDispatcher(num_threads=5)
+    dispatcher = ThreadedDispatcher(num_threads=5)
     if args.websocket:
         print('Running websocket server on 6000')
         websocket_server = WebsocketListener(engine_choicies, dispatcher)

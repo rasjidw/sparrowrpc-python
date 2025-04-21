@@ -10,7 +10,7 @@ import time
 
 from lucido.core import make_export_decorator
 from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
-from lucido.threaded import ThreadPoolDispatcher
+from lucido.threaded import ThreadedDispatcher
 from lucido.engines.v050 import ProtocolEngine
 from lucido.threaded.transports import ParentSubprocessRunner
 
@@ -57,7 +57,7 @@ def main(debug, use_msgpack):
     else:
         serialiser = JsonSerialiser()
     engine = ProtocolEngine(serialiser)
-    dispatcher = ThreadPoolDispatcher(num_threads=5)
+    dispatcher = ThreadedDispatcher(num_threads=5)
 
     transport = ParentSubprocessRunner(engine, dispatcher)
     args = ['./threaded_subprocess_child.py']
