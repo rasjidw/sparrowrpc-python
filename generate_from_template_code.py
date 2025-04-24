@@ -4,11 +4,13 @@ import pathlib
 
 
 class TextCooker:
-    def __init__(self, orig_text: str, template_str: str, threaded_str: str, async_str: str, mode: str):
+    def __init__(self, orig_text: str, template_str: str, threaded_str: str, async_str: str, threaded_mod_name: str, async_mod_name: str, mode: str):
         self.orig_text = orig_text
         self.template_str = template_str
         self.threaded_str = threaded_str
         self.async_str = async_str
+        self.threaded_mod_name = threaded_mod_name
+        self.async_mod_name = async_mod_name
         if mode not in (self.threaded_str, self.async_str):
             raise ValueError(f'Invalid mode of {mode}')
         self.mode = mode
@@ -32,9 +34,14 @@ class TextCooker:
 
     def do_simple_replacements(self):
         dest_str = self.mode
+        mod_dest = self.threaded_mod_name if self.mode == self.threaded_str else self.async_mod_name
+        self.global_replace(self.template_str + ' import', mod_dest + ' import')  # FIXME: bit hacky - use re?
         self.global_replace_preserve_case(self.template_str, dest_str)
         if self.mode == self.threaded_str:
+            # FIXME: would be better to parse each line, at least enough to ignore comments
             self.global_replace('async def', 'def')
+            self.global_replace('async with', 'with')
+            self.global_replace('async for', 'for')
             self.global_replace('await ', '')
             self.global_replace('AsyncIterable', 'Iterable')
             self.global_replace('__aiter__', '__iter__')
@@ -118,10 +125,12 @@ class TextCooker:
 
 
 class ThreadedFromAsyncUpdater:
-    def __init__(self, template_dir, async_str='async', threaded_str='threaded', template_str='_template_', async_dir = 'asyncio', threaded_dir='threaded'):
+    def __init__(self, template_dir, async_str='async', threaded_str='threaded', template_str='_template_', async_mod_name = 'asyncio', threaded_mod_name='threaded'):
         self.template_dir = pathlib.Path(template_dir)
-        self.asyc_dir = self.template_dir.parent / async_dir
-        self.theaded_dir = self.template_dir.parent / threaded_dir
+        self.async_mod_name = async_mod_name
+        self.threaded_mod_name = threaded_mod_name
+        self.asyc_dir = self.template_dir.parent / async_mod_name
+        self.theaded_dir = self.template_dir.parent / threaded_mod_name
         self.template_str = template_str
         self.async_str = async_str
         self.threaded_str = threaded_str
@@ -160,7 +169,7 @@ class ThreadedFromAsyncUpdater:
             f.write(cooked)
 
     def cook(self, orig_text: str, mode: str):
-        cooker = TextCooker(orig_text, self.template_str, self.threaded_str, self.async_str, mode)
+        cooker = TextCooker(orig_text, self.template_str, self.threaded_str, self.async_str, self.threaded_mod_name, self.async_mod_name, mode)
         return cooker.get_processed()
     
     def get_template_files(self):
