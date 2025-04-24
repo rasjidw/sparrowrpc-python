@@ -52,12 +52,13 @@ async def multipart_response(count_to: int):
 
 @export(injectable_params=dict(channel=AsyncMsgChannelInjector))
 async def iterable_param(nums, channel):
+    print(type(channel))
     assert isinstance(channel, AsyncMsgChannel)
     count = 0
-    for x in nums:
+    async for x in nums:
         msg = f'Fetched {x} from remote end'
         print(f'>>>>>>>>>>>>>> {msg} <<<<<<<<<<<<<')
-        channel.request.display_chat_message(msg=msg)
+        await channel.request.display_chat_message(msg=msg)
         count += x
     return count
 

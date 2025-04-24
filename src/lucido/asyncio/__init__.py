@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import AsyncIterable
 import inspect
 import json
 import logging
@@ -13,6 +12,7 @@ from threading import current_thread
 import asyncio
 from asyncio import Queue, QueueEmpty, Lock, Event
 from concurrent.futures import ThreadPoolExecutor
+from typing import AsyncIterable as Iterable
 from traceback import format_exc
 from typing import Any, TYPE_CHECKING
 
@@ -142,7 +142,7 @@ async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRe
             injector = injector_cls(msg_channel, incoming_msg, func_info)
             injectors.append(injector)
             await injector.pre_call_setup()
-            params[param_name] = injector.get_param()
+            params[param_name] = await injector.get_param()
 
     if incoming_msg.raw_binary:
         result = func_info.func(incoming_msg.data, **params)
@@ -154,9 +154,17 @@ async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRe
                     raise ValueError('duplicate param name')  # FIXME: make a caller error
                 params[param_name] = value
         if isinstance(incoming_msg, IncomingRequest) and incoming_msg.callback_params:
-            for (param_name, cb_proxy) in incoming_msg.callback_params.items():
+            for (param_name, cb_data) in incoming_msg.callback_params.items():
                 if param_name in params:
                     raise ValueError('duplicate param name')  # FIXME: make a caller error
+                assert isinstance(cb_data, dict)
+                proxy_type, cb_param_data = list(cb_data.items())[0]
+                callback_request_id = cb_param_data['callback_request_id']
+                cb_info = cb_param_data['cb_info']
+                if proxy_type == '#cb':
+                    cb_proxy = AsyncCallbackProxy(param_name, callback_request_id, cb_info)
+                elif proxy_type == '#icb':
+                    cb_proxy = AsyncIterableCallbackProxy(param_name, callback_request_id, cb_info)
                 assert isinstance(cb_proxy, CallbackProxyBase)
                 cb_proxy.set_channel(msg_channel)
                 params[param_name] = cb_proxy
@@ -172,7 +180,7 @@ async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRe
 async def async_run_request_wait_to_complete(msg_channel: AsyncMsgChannel, request: IncomingRequest, func_info: FuncInfo):
     try:
         if func_info.multipart_reponse:
-            for part_result in await async_call_func(msg_channel, request, func_info):
+            async for part_result in await async_call_func(msg_channel, request, func_info):
                 outgoing_msg = OutgoingResponse(request_id=request.id, result=part_result, response_type=ResponseType.MULTIPART)
                 await msg_channel._send_message(outgoing_msg)
             final_response = OutgoingResponse(request_id=request.id, response_type=ResponseType.MULTIPART, final=FinalType.TERMINATOR)
@@ -185,7 +193,7 @@ async def async_run_request_wait_to_complete(msg_channel: AsyncMsgChannel, reque
             outgoing_msg = OutgoingResponse(request_id=request.id, result=result)
             await msg_channel._send_message(outgoing_msg)
     except Exception as e:
-        if func_info.is_iterable_callback and isinstance(e, StopIteration):
+        if func_info.is_iterable_callback and isinstance(e, StopAsyncIteration):
             outgoing_msg = OutgoingResponse(request_id=request.id, result=None, final=FinalType.TERMINATOR)
         else:
             log.debug(format_exc())
@@ -232,7 +240,6 @@ class AsyncDispatcher(AsyncDispatcherBase):
         self.executor = ThreadPoolExecutor(max_workers=num_threads)  # FIXME: Not using this yet. For non-async functions exported
         self.task_fetcher = asyncio.create_task(self._async_task_fetcher())
         # asyncio.ensure_future(self.task_fetcher)
-
 
     async def _async_task_fetcher(self):
         while not self.time_to_stop:
@@ -299,7 +306,7 @@ class AsyncMsgChannel(MsgChannelBase):
             await self.dispatcher.dispatch_incoming(self, message, func_info)
 
     async def _create_message_id(self):
-        with self._message_id_lock:
+        async with self._message_id_lock:
             message_id = self._message_id
             self._message_id += 1
             return message_id
@@ -346,8 +353,8 @@ class AsyncChannelProxy:
         count = 0
         while True:
             try:
-                event = return_queue.get(timeout=1)
-            except QueueEmpty:
+                event = await asyncio.wait_for(return_queue.get(), timeout=1)
+            except asyncio.TimeoutError:
                 count += 1
                 if timeout and count > timeout:
                     raise RuntimeError('TIMEOUT')  # FIXME. We should at least clean up incoming registers etc. Do we notify the callee?
@@ -391,8 +398,8 @@ class AsyncChannelProxy:
                     if isinstance(cb_info, RequestCallbackInfo):
                         func_info = FuncInfo(event.target, None, None, None, False, cb_info.func)
                     elif isinstance(cb_info, IterableCallbackInfo):
-                        def iter_func():
-                            return next(cb_info.iter)
+                        async def iter_func():
+                            return anext(cb_info.iter)
                         func_info = FuncInfo(event.target, None, None, None, False, iter_func, is_iterable_callback=True)
                     await async_dispatch_request_or_notification(self.channel, event, func_info)
                 except KeyError:
@@ -412,14 +419,14 @@ class AsyncChannelProxy:
             log.warning(f'Unhandled event {event}')
 
     async def send_request_multipart_result_as_generator(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None):
-        for result in await self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.MULTIPART):
+        async for result in await self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.MULTIPART):
             yield result
 
     async def send_request(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None):
-        return await next(self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.NORMAL))
+        return await anext(self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.NORMAL))
                     
     async def send_request_for_iter(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None):
-        return await next(self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.NORMAL, 
+        return await anext(self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.NORMAL, 
                                                                         callback_iterable=True))
     
     async def send_notification(self, message: OutgoingNotification, timeout=None):
@@ -428,13 +435,16 @@ class AsyncChannelProxy:
     async def _send_message_wait_for_sent_event(self, message, timeout=None):
         wait_event = Event()
         async def msg_sent_cb(event):
-            await wait_event.set()
+            wait_event.set()
         await self.channel.queue_message(message, msg_sent_cb)
-        if not wait_event.wait(timeout=timeout):
+        try:
+            await asyncio.wait_for(wait_event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
             log.error('Timeout error on notificaiton send')  # FIXME: Do we raise an error?
 
+
     async def send_request_raw_async(self, message: OutgoingRequest, event_callback):
-        req_id = self.channel.queue_message(message, event_callback)
+        req_id = await self.channel.queue_message(message, event_callback)
 
         # FIXME: Possible race condition here, as (in theory) we could get the callback before the self._callbacks dict is updated.
         # Fix is probably to allocate the id in a separate call, rather than in queue message?
@@ -464,16 +474,16 @@ class AsyncRequestProxy:
             if callable(value):
                 callback_params[param] = RequestCallbackInfo(value)
             # not just checking isinstance(value, Iterable) because we don't want lists etc
-            elif hasattr(value, '__iter__') and hasattr(value, '__next__'):
+            elif hasattr(value, '__aiter__') and hasattr(value, '__anext__'):
                 callback_params[param] = IterableCallbackInfo(value)
             else:
                 params[param] = value
         request = OutgoingRequest(self._target, namespace=self._namespace, node=self._node, params=params, callback_params=callback_params, request_type=self._request_type, acknowledge=bool(self._ack_callback))
-        channel_proxy = self._msg_channel.get_proxy()
+        channel_proxy = await self._msg_channel.get_proxy()
         if self._multipart_reponse:
-            return channel_proxy.send_request_multipart_result_as_generator(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
+            return await channel_proxy.send_request_multipart_result_as_generator(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
         else:
-            return channel_proxy.send_request(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
+            return await channel_proxy.send_request(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
     
 
 class AsyncRequestProxyMaker:
@@ -498,9 +508,10 @@ class AsyncRequestProxyMaker:
 
 
 class CallbackProxyBase:
-    def __init__(self, cb_param_name, callback_request_id):
+    def __init__(self, cb_param_name, callback_request_id, cb_info):
         self._cb_param_name = cb_param_name
         self._callback_request_id = callback_request_id
+        self.cb_info = cb_info
         self._channel = None
 
     def set_channel(self, channel):
@@ -509,8 +520,8 @@ class CallbackProxyBase:
 
 
 class AsyncCallbackProxy(CallbackProxyBase):
-    def __init__(self, cb_param_name, callback_request_id):
-        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id)
+    def __init__(self, cb_param_name, callback_request_id, cb_info):
+        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id, cb_info)
         self.request_type = None  # can be changed before sending / FIXME: how we do set a default?
 
     def set_to_notification(self):
@@ -525,19 +536,17 @@ class AsyncCallbackProxy(CallbackProxyBase):
         else:
             outgoing_msg = OutgoingNotification(target=self._cb_param_name, callback_request_id=self._callback_request_id, params=kwargs)
         log.debug(f'Callback Proxy call: {repr(outgoing_msg)}')
-        proxy = self._channel.get_proxy()
+        proxy = await self._channel.get_proxy()
         if self.request_type:
-            result = proxy.send_request(outgoing_msg)
+            result = await proxy.send_request(outgoing_msg)
             return result
         else:
-            proxy.send_notification(outgoing_msg)
+            await proxy.send_notification(outgoing_msg)
 
 
-
-
-class AsyncIterableCallbackProxy(AsyncIterable, CallbackProxyBase):
-    def __init__(self, cb_param_name, callback_request_id):
-        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id)
+class AsyncIterableCallbackProxy(Iterable, CallbackProxyBase):
+    def __init__(self, cb_param_name, callback_request_id, cb_info):
+        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id, cb_info)
         self._final = False
 
     def __aiter__(self):
@@ -545,14 +554,14 @@ class AsyncIterableCallbackProxy(AsyncIterable, CallbackProxyBase):
 
     async def __anext__(self):
         if self._final:
-            raise StopIteration()
+            raise StopAsyncIteration()
         
         outgoing_msg = OutgoingRequest(target=self._cb_param_name, callback_request_id=self._callback_request_id)
         log.debug(f'CallbackIterableProxy call: {repr(outgoing_msg)}')
-        proxy = self._channel.get_proxy()
-        result, final = proxy.send_request_for_iter(outgoing_msg)
+        proxy = await self._channel.get_proxy()
+        result, final = await proxy.send_request_for_iter(outgoing_msg)
         if final == FinalType.TERMINATOR:
-            raise StopIteration()
+            raise StopAsyncIteration()
         elif final == FinalType.FINAL:
             self._final = True
         return result

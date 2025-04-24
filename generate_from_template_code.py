@@ -42,8 +42,10 @@ class TextCooker:
             self.global_replace('async def', 'def')
             self.global_replace('async with', 'with')
             self.global_replace('async for', 'for')
+            self.global_replace(' anext(', ' next(')
             self.global_replace('await ', '')
             self.global_replace('AsyncIterable', 'Iterable')
+            self.global_replace('StopAsyncIteration', 'StopIteration')
             self.global_replace('__aiter__', '__iter__')
             self.global_replace('__anext__', '__next__')
 
