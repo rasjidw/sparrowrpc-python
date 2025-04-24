@@ -334,7 +334,8 @@ class ThreadedChannelProxy:
 
     def _send_request_result_as_generator(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None, expected_response_type=ResponseType.NORMAL, callback_iterable=False):
         return_queue = Queue()
-        cb_reader = lambda event: return_queue.put(event)
+        def cb_reader(event):
+            return_queue.put(event)
         self.send_request_raw_async(message, cb_reader)
         count = 0
         while True:
@@ -420,7 +421,8 @@ class ThreadedChannelProxy:
 
     def _send_message_wait_for_sent_event(self, message, timeout=None):
         wait_event = Event()
-        msg_sent_cb = lambda event: wait_event.set()
+        def msg_sent_cb(event):
+            wait_event.set()
         self.channel.queue_message(message, msg_sent_cb)
         if not wait_event.wait(timeout=timeout):
             log.error('Timeout error on notificaiton send')  # FIXME: Do we raise an error?
