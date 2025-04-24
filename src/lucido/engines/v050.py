@@ -10,7 +10,6 @@ from ..core import OutgoingAcknowledge, OutgoingException, OutgoingNotification,
 from ..core import IncomingAcknowledge, IncomingException, IncomingNotification, IncomingRequest, IncomingResponse
 from ..core import ControlMsg, RequestBase, RequestCallbackInfo, RequestType, ResponseType, MtpeExceptionCategory, MtpeExceptionInfo, IterableCallbackInfo
 from ..core import RequestType, ResponseType, FinalType
-from ..threaded import ThreadedIterableCallbackProxy, ThreadedCallbackProxy  # FIXME! These should not be in the engine!
 
 from ..exceptions import ProtocolError
 
@@ -183,11 +182,11 @@ class ProtocolEngine(ProtocolEngineBase):
                 special_params_dict = self.serialiser.deserialise(raw_contents[1])  # cb_param -> target_name
                 cb_params = dict()
                 raw_std_cb_params = special_params_dict.get('#cb', dict())
-                for (param_name, info) in raw_std_cb_params.items():   # FIXME: currently ignoring info
-                    cb_params[param_name] = ThreadedCallbackProxy(param_name, message.id)  # FIXME: We will need some kind of maker that resolves this to threaded or async after dispatch
+                for (param_name, cb_info) in raw_std_cb_params.items():   # FIXME: currently ignoring info
+                    cb_params[param_name] = {'#cb': {'callback_request_id': message.id, 'cb_info': cb_info}}
                 raw_iter_cb_params = special_params_dict.get('#icb', dict())
-                for (param_name, info) in raw_iter_cb_params.items():
-                    cb_params[param_name] = ThreadedIterableCallbackProxy(param_name, message.id)  # FIXME: We will need some kind of maker that resolves this to threaded or async after dispatch
+                for (param_name, cb_info) in raw_iter_cb_params.items():
+                    cb_params[param_name] = {'#icb': {'callback_request_id': message.id, 'cb_info': cb_info}}
                 message.callback_params = cb_params
             return message
         if isinstance(message, IncomingNotification):

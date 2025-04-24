@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import Iterable
 import json
 import logging
 import os
@@ -11,6 +10,7 @@ import sys
 from threading import current_thread
 from threading import Thread, Lock, Event
 from queue import Queue, Empty as QueueEmpty
+from typing import Iterable
 from traceback import format_exc
 from typing import Any, TYPE_CHECKING
 
@@ -151,9 +151,17 @@ def threaded_call_func(msg_channel: ThreadedMsgChannel, incoming_msg: IncomingRe
                     raise ValueError('duplicate param name')  # FIXME: make a caller error
                 params[param_name] = value
         if isinstance(incoming_msg, IncomingRequest) and incoming_msg.callback_params:
-            for (param_name, cb_proxy) in incoming_msg.callback_params.items():
+            for (param_name, cb_data) in incoming_msg.callback_params.items():
                 if param_name in params:
                     raise ValueError('duplicate param name')  # FIXME: make a caller error
+                assert isinstance(cb_data, dict)
+                proxy_type, cb_param_data = list(cb_data.items())[0]
+                callback_request_id = cb_param_data['callback_request_id']
+                cb_info = cb_param_data['cb_info']
+                if proxy_type == '#cb':
+                    cb_proxy = ThreadedCallbackProxy(param_name, callback_request_id, cb_info)
+                elif proxy_type == '#icb':
+                    cb_proxy = ThreadedIterableCallbackProxy(param_name, callback_request_id, cb_info)
                 assert isinstance(cb_proxy, CallbackProxyBase)
                 cb_proxy.set_channel(msg_channel)
                 params[param_name] = cb_proxy
@@ -235,7 +243,6 @@ class ThreadedDispatcher(ThreadedDispatcherBase):
                 continue
             threaded_dispatch_request_or_notification(msg_channel, incoming_msg, func_info)
         log.debug(f'Dispatch worker in thread {current_thread().name} finished.')
-
 
     def dispatch_incoming(self, msg_channel: ThreadedMsgChannel, request: RequestBase, func_info: FuncInfo):
         queue_item = (msg_channel, request, func_info)
@@ -427,6 +434,7 @@ class ThreadedChannelProxy:
         if not wait_event.wait(timeout=timeout):
             log.error('Timeout error on notificaiton send')  # FIXME: Do we raise an error?
 
+
     def send_request_raw_async(self, message: OutgoingRequest, event_callback):
         req_id = self.channel.queue_message(message, event_callback)
 
@@ -492,9 +500,10 @@ class ThreadedRequestProxyMaker:
 
 
 class CallbackProxyBase:
-    def __init__(self, cb_param_name, callback_request_id):
+    def __init__(self, cb_param_name, callback_request_id, cb_info):
         self._cb_param_name = cb_param_name
         self._callback_request_id = callback_request_id
+        self.cb_info = cb_info
         self._channel = None
 
     def set_channel(self, channel):
@@ -503,8 +512,8 @@ class CallbackProxyBase:
 
 
 class ThreadedCallbackProxy(CallbackProxyBase):
-    def __init__(self, cb_param_name, callback_request_id):
-        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id)
+    def __init__(self, cb_param_name, callback_request_id, cb_info):
+        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id, cb_info)
         self.request_type = None  # can be changed before sending / FIXME: how we do set a default?
 
     def set_to_notification(self):
@@ -527,11 +536,9 @@ class ThreadedCallbackProxy(CallbackProxyBase):
             proxy.send_notification(outgoing_msg)
 
 
-
-
 class ThreadedIterableCallbackProxy(Iterable, CallbackProxyBase):
-    def __init__(self, cb_param_name, callback_request_id):
-        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id)
+    def __init__(self, cb_param_name, callback_request_id, cb_info):
+        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id, cb_info)
         self._final = False
 
     def __iter__(self):
