@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import AsyncIterable
-import inspect
+import inspect  #= async
 import json
 import logging
 import os
@@ -111,12 +111,12 @@ class _Template_TransportBase(ABC):
         return False
 
     async def get_binary_chains(self):
-        log.debug('Starting in get_binary_chains')
+        log.debug('Starting in get_binary_chains') #= async
         while True:
             binary_chain = await self.incoming_queue.get()
             if binary_chain is None:  # closing down
                 return
-            log.debug('Got chain from queue')
+            log.debug('Got chain from queue')  #= async
             yield (binary_chain, self.chain_reader.complete(), self.remote_closed)
 
     async def send_binary_chain(self, binary_chain):
