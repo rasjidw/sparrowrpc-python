@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+
+import argparse
+import asyncio
+import logging
+import sys
+from threading import current_thread
+
+from lucido.core import make_export_decorator
+from lucido.engines.v050 import ProtocolEngine
+from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
+from lucido.exceptions import InvalidParams
+
+from lucido.asyncio import AsyncDispatcher, AsyncMsgChannel, AsyncMsgChannelInjector, AsyncCallbackProxy
+from lucido.asyncio.transports import AsyncTcpListener
+from lucido.asyncio.transports.websockets import AsyncWebsocketListener
+
+
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
+                    format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s'
+                    )
+
+
+export = make_export_decorator()
+
+
+@export
+async def hello_world(name=None):
+    if name:
+        return f'Hello {name}!'
+    else:
+        return f'Hello world!'
+
+
+@export
+async def slow_counter(count_to: int, delay: int = 0.5, progress: AsyncCallbackProxy = None):
+    if progress:
+        progress.set_to_notification()
+    for x in range(count_to):
+        msg = f'Counted to {x} in thread - {current_thread().name}'
+        if progress:
+            await progress(message=msg)
+        asyncio.sleep(delay)
+    result = x + 1
+    return f'Counted to {result} with a delay of {delay} between counts. All done.'
+
+
+@export(multipart_response=True)
+async def multipart_response(count_to: int):
+    for x in range(count_to):
+        yield (x, x+1)
+
+@export(injectable_params=dict(channel=AsyncMsgChannelInjector))
+async def iterable_param(nums, channel):
+    assert isinstance(channel, AsyncMsgChannel)
+    count = 0
+    for x in nums:
+        msg = f'Fetched {x} from remote end'
+        print(f'>>>>>>>>>>>>>> {msg} <<<<<<<<<<<<<')
+        channel.request.display_chat_message(msg=msg)
+        count += x
+    return count
+
+
+@export(multipart_request='nums')
+async def multipart_request(nums, start=0):
+    print(f'In multipart request with start of {start}')
+    sum = start
+    for x in nums:
+        print(f'Adding {x}')
+        sum += x
+    return sum
+
+
+@export
+async def division(a, b):
+    try:
+        result = a / b
+    except (TypeError, ValueError) as e:
+        raise InvalidParams(f'Invalid param type: {str(e)}')
+    except ZeroDivisionError:
+        raise InvalidParams('b must not be 0')
+    if a == 11:
+        raise RuntimeError('a == 11 is a bug')
+    return result
+
+
+
+async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--websocket', action='store_true')
+    args = parser.parse_args()
+
+    json_engine = ProtocolEngine(JsonSerialiser())
+    msgpack_engine = ProtocolEngine(MsgpackSerialiser())
+    engine_choicies = [msgpack_engine, json_engine]
+    
+    dispatcher = AsyncDispatcher(num_threads=5)
+    if args.websocket:
+        print('Running websocket server on 6000')
+        websocket_server = AsyncWebsocketListener(engine_choicies, dispatcher)
+        await websocket_server.run_server('0.0.0.0', 6000)
+    else:
+        print('Running tcp server on 5000')
+        tcp_server = AsyncTcpListener(engine_choicies, dispatcher)
+        await tcp_server.run_server('0.0.0.0', 5000)
+    await dispatcher.shutdown()
+
+if __name__ == '__main__':
+    asyncio.run(main())
