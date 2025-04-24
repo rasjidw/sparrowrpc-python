@@ -259,7 +259,8 @@ class AsyncDispatcher(AsyncDispatcherBase):
     async def shutdown(self, timeout=0):
         log.debug('Shutting down dispatcher')
         self.time_to_stop = True
-        await asyncio.gather(self.tasks)
+        for task in self.tasks:
+            await task
         log.debug('Dispatcher shut down')
 
 
@@ -394,7 +395,7 @@ class AsyncChannelProxy:
                         continue
             if isinstance(event, IncomingRequest) or isinstance(event, IncomingNotification):
                 try:
-                    cb_info = await self._callbacks[event.callback_request_id][event.target]
+                    cb_info = self._callbacks[event.callback_request_id][event.target]
                     if isinstance(cb_info, RequestCallbackInfo):
                         func_info = FuncInfo(event.target, None, None, None, False, cb_info.func)
                     elif isinstance(cb_info, IterableCallbackInfo):

@@ -46,7 +46,7 @@ class _Template_WebsocketConnector:
         self.initiator = True
 
     async def connect(self, ws_uri):
-        websocket = client.connect(ws_uri)
+        websocket = await client.connect(ws_uri)
         transport = _Template_WebsocketTransport(self.engine, websocket)  # FIX_ME: Allow options to be set / passed in??
         return _Template_MsgChannel(transport, initiator=self.initiator, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 

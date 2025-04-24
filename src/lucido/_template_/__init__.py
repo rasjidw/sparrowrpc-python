@@ -305,7 +305,8 @@ class _Template_Dispatcher(_Template_DispatcherBase):
             t.join(timeout=timeout)
         #= threaded end
         #= async start
-        await asyncio.gather(self.tasks)
+        for task in self.tasks:
+            await task
         #= async end
         log.debug('Dispatcher shut down')
 
@@ -461,7 +462,7 @@ class _Template_ChannelProxy:
                         continue
             if isinstance(event, IncomingRequest) or isinstance(event, IncomingNotification):
                 try:
-                    cb_info = await self._callbacks[event.callback_request_id][event.target]
+                    cb_info = self._callbacks[event.callback_request_id][event.target]
                     if isinstance(cb_info, RequestCallbackInfo):
                         func_info = FuncInfo(event.target, None, None, None, False, cb_info.func)
                     elif isinstance(cb_info, IterableCallbackInfo):
