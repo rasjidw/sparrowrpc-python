@@ -8,14 +8,6 @@ import logging
 import os
 import socket
 import sys
-try:
-    from threading import current_thread
-except ImportError:
-    # micropython
-    NameHolder = namedtuple('NameHolder', ['name'])
-    def current_thread():
-        return NameHolder('dummy')
-
 import asyncio
 from asyncio import Lock, Event
 try:
@@ -44,6 +36,10 @@ from ..core import FunctionRegister, default_func_register
 
 
 log = logging.getLogger(__name__)
+
+
+def get_thread_or_task_name():
+    return asyncio.current_task().get_name()
 
 
 class AsyncTransportBase(ABC):
@@ -296,11 +292,11 @@ class AsyncMsgChannel(MsgChannelBase):
         log.debug(f'Channel {self} registered')
 
     async def wait_for_remote_close(self):
-        log.debug(f'Waiting for incoming message pump to finish on {current_thread().name}')
+        log.debug(f'Waiting for incoming message pump to finish on {get_thread_or_task_name()}')
         await self._msg_reader_task
 
     async def _incoming_msg_pump(self):
-        log.debug(f'message pump started on thread {current_thread().name}')
+        log.debug(f'message pump started on thread {get_thread_or_task_name()}')
         async for (bin_chain, complete, remote_closed) in self.transport.get_binary_chains():
             message, dispatch, incoming_callback = self._parse_and_allocate_bin_chain(bin_chain)
             if dispatch:
@@ -309,7 +305,7 @@ class AsyncMsgChannel(MsgChannelBase):
                 await incoming_callback(message)
             if remote_closed:
                 break
-        log.debug(f'message pump stopped on thread {current_thread().name}')
+        log.debug(f'message pump stopped on thread {get_thread_or_task_name()}')
 
     async def _dispatch(self, message: IncomingRequest|IncomingNotification):
         func_info, ack_err_msg = self._get_func_info_and_ack_err_msg(message)

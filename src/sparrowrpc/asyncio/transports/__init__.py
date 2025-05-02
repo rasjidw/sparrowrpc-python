@@ -7,14 +7,6 @@ import logging
 import os
 import socket
 import sys
-try:
-    from threading import current_thread
-except ImportError:
-    # micropython
-    NameHolder = namedtuple('NameHolder', ['name'])
-    def current_thread():
-        return NameHolder('dummy')
-
 import asyncio
 from asyncio import Lock, Event
 try:

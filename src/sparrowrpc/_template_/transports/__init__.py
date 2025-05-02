@@ -7,16 +7,8 @@ import logging
 import os
 import socket
 import sys
-try:
-    from threading import current_thread
-except ImportError:
-    # micropython
-    NameHolder = namedtuple('NameHolder', ['name'])
-    def current_thread():
-        return NameHolder('dummy')
-
 if 'threaded' in __name__: #= remove
-    from threading import Thread, Lock, Event  #= threaded <
+    from threading import Thread, Lock, Event, current_thread  #= threaded <
     from queue import Queue, Empty as QueueEmpty  #= threaded <
 else: #= remove
     import asyncio  #= async <

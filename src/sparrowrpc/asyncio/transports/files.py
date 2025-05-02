@@ -1,7 +1,4 @@
-
 import logging
-from threading import Thread
-
 import aiofiles
 
 
