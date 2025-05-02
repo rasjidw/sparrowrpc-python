@@ -188,7 +188,7 @@ class ThreadedFromAsyncUpdater:
 
 def main():
     root = pathlib.Path(__file__).parent
-    template_dir = root / 'src' / 'lucido' / '_template_'
+    template_dir = root / 'src' / 'sparrowrpc' / '_template_'
     updater = ThreadedFromAsyncUpdater(template_dir)
     updater.update_from_template_folder()
 
