@@ -8,7 +8,7 @@ from threading import current_thread
 
 from sparrowrpc.core import make_export_decorator
 from sparrowrpc.threaded import ThreadedMsgChannelInjector, ThreadedCallbackProxy
-from sparrowrpc.engines import jr2l, v050
+from sparrowrpc.engines import hs, v050
 from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
 from sparrowrpc.exceptions import InvalidParams
 
@@ -55,7 +55,7 @@ def main():
 
     json_engine = v050.ProtocolEngine(JsonSerialiser())
     msgpack_engine = v050.ProtocolEngine(MsgpackSerialiser())
-    jsonrpc2l_engine = jr2l.ProtocolEngine()
+    jsonrpc2l_engine = hs.ProtocolEngine()
     engine_choicies = [msgpack_engine, json_engine, jsonrpc2l_engine]
     
     dispatcher = ThreadedDispatcher(num_threads=5)

@@ -13,12 +13,20 @@ from ..core import RequestType, ResponseType, FinalType, ResponseBase
 
 from ..exceptions import ProtocolError
 
+"""
+This is the 'Handshake' engine - basically a simplified version of jsonrpc2.
+The majority of the Sparrow RPC features are NOT supported with this engine.
+
+It is expected that this engine will remain constant over time, even as the main protocol evolves and is updated.
+This provides a way to perform a handshake between systems prior to knowing what (if any) common core protocol versions
+they support.
+"""
 
 log = logging.getLogger(__name__)
 
 
 class ProtocolEngine(ProtocolEngineBase):
-    _sig = 'jrl2'
+    _sig = 'hs'
     max_bc_length = 1   # params or result (prefix not counted)
     def __init__(self):
         self.message_id = 1
@@ -62,14 +70,14 @@ class ProtocolEngine(ProtocolEngineBase):
             raise ValueError('Only normal requests supported with this engine')
         if message.acknowledge:
             raise ValueError('Acknowlege not supported with this engine.')
-        data = dict(jsonrpc="2.0l", method=self._make_method_name(message), id=message_id)
+        data = dict(method=self._make_method_name(message), id=message_id)
         if message.params:
             data['params'] = message.params
         return data
         
     def _make_out_notification(self, message: OutgoingNotification, message_id: int|None):
         self._check_supported_request(message)
-        data = dict(jsonrpc="2.0l", method=self._make_method_name(message))
+        data = dict(method=self._make_method_name(message))
         if message.params:
             data['params'] = message.params
         return data
@@ -82,7 +90,7 @@ class ProtocolEngine(ProtocolEngineBase):
 
     def _make_out_resp(self, message: OutgoingResponse, message_id: int):
         self._check_supported_response(message)
-        return dict(jsonrpc="2.0l", result=message.result, id=message.request_id)
+        return dict(result=message.result, id=message.request_id)
 
     def _make_out_except(self, message: OutgoingException, message_id: int):
         self._check_supported_response(message)
@@ -94,10 +102,10 @@ class ProtocolEngine(ProtocolEngineBase):
             except_data['details'] = exc_info.details
         if exc_info.value is not None:
             except_data['value'] = exc_info.value
-        return dict(jsonrpc="2.0l", error=except_data, id=message.request_id)
+        return dict(error=except_data, id=message.request_id)
         
     def parse_incoming_envelope(self, incoming_bin_chain: BinaryChain):
-        raise RuntimeError('Not supported for jsonrcp2l')
+        raise RuntimeError('Not supported for this engine')
     
     def parse_incoming_message(self, incoming_bin_chain: BinaryChain):
         msg_parts = incoming_bin_chain.parts

@@ -8,7 +8,7 @@ import time
 
 from sparrowrpc.core import make_export_decorator, IncomingResponse, IncomingException
 from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
-from sparrowrpc.engines import jr2l, v050
+from sparrowrpc.engines import hs, v050
 
 from sparrowrpc.threaded import ThreadedDispatcher
 from sparrowrpc.threaded.transports import ThreadedTcpConnector
@@ -69,8 +69,8 @@ def background_counter(channel, count_to, delay):
 
 
 def main(engine_choice, use_websocket):
-    if engine_choice == 'jr2l':
-        engine = jr2l.ProtocolEngine()
+    if engine_choice == 'hs':
+        engine = hs.ProtocolEngine()
     else:
         if engine_choice == 'mp':
             serialiser = MsgpackSerialiser()
@@ -111,7 +111,7 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action='store_true')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--msgpack', action='store_true')
-    group.add_argument('--jr2l', action='store_true')
+    group.add_argument('--hs', action='store_true')
     parser.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
@@ -121,6 +121,6 @@ if __name__ == '__main__':
     choice = 'js'
     if args.msgpack:
         choice = 'mp'
-    if args.jr2l:
-        choice = 'jr2l'
+    if args.hs:
+        choice = 'hs'
     main(choice, args.websocket)
