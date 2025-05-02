@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 
 class ProtocolEngine(ProtocolEngineBase):
-    _sig = 'jsonrpc2l'
+    _sig = 'jrl2'
     max_bc_length = 1   # params or result (prefix not counted)
     def __init__(self):
         self.message_id = 1
