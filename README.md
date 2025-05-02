@@ -1,9 +1,9 @@
 # Sparrow RPC
 
-Sparrow PRC is a lightweight Event Based Multi-Transport Peer-to-Peer bidirectional RPC System and Protocol Engine.
+Sparrow PRC is a language independent, lightweight Event Based Multi-Transport Peer-to-Peer bidirectional RPC System and Protocol Engine.
 
 The purpose of Sparrow is to not just be a rpc system, but to also be a high level api for the creation of
-sophisticated protocols without worrying about 'bytes on the wire'.  
+sophisticated protocols without worrying about 'bytes on the wire'.
 
 ## Core Features
 

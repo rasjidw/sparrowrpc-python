@@ -16,4 +16,5 @@ Transports planned include:
  - Additional transports
    - windows pipes / unix socket etc
    - shared memory (instead of stdio)
+ - Test and demo receipes for different protocol features, like pub / sub, chat server, rsync link server / client, etc. 
  
