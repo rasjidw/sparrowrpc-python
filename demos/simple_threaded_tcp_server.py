@@ -6,15 +6,15 @@ import sys
 from time import sleep
 from threading import current_thread
 
-from lucido.core import make_export_decorator
-from lucido.threaded import ThreadedMsgChannelInjector, ThreadedCallbackProxy
-from lucido.engines import v050, _jsonrpc2l
-from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
-from lucido.exceptions import InvalidParams
+from sparrowrpc.core import make_export_decorator
+from sparrowrpc.threaded import ThreadedMsgChannelInjector, ThreadedCallbackProxy
+from sparrowrpc.engines import v050, _jsonrpc2l
+from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
+from sparrowrpc.exceptions import InvalidParams
 
-from lucido.threaded import ThreadedDispatcher, ThreadedMsgChannel
-from lucido.threaded.transports import ThreadedTcpListener
-from lucido.threaded.transports.websockets import ThreadedWebsocketListener
+from sparrowrpc.threaded import ThreadedDispatcher, ThreadedMsgChannel
+from sparrowrpc.threaded.transports import ThreadedTcpListener
+from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketListener
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,

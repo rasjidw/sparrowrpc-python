@@ -1,18 +1,35 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections import defaultdict
-import inspect
+from collections import defaultdict, namedtuple
+import inspect  #= async
 import json
 import logging
 import os
 import socket
 import sys
-from threading import current_thread
-import asyncio
-from asyncio import Queue, QueueEmpty, Lock, Event
-from concurrent.futures import ThreadPoolExecutor
-from typing import AsyncIterable as Iterable
+try:
+    from threading import current_thread
+except ImportError:
+    # micropython
+    NameHolder = namedtuple('NameHolder', ['name'])
+    def current_thread():
+        return NameHolder('dummy')
+
+if 'threaded' in __name__: #= remove
+    from threading import Thread, Lock, Event  #= threaded <
+    from queue import Queue, Empty as QueueEmpty  #= threaded <
+    from typing import Iterable #= threaded <
+else: #= remove
+    import asyncio #= async <
+    from asyncio import Lock, Event #= async <
+    try: #= async <
+        from asyncio import Queue, QueueEmpty #= async <
+    except AttributeError:  #= async <
+        from uasync.queues import Queue, QueueEmpty  #= async <
+
+    #from concurrent.futures import ThreadPoolExecutor #= async <
+    from typing import AsyncIterable as Iterable  #= async <
 from traceback import format_exc
 from typing import Any, TYPE_CHECKING
 
@@ -34,7 +51,7 @@ from ..core import FunctionRegister, default_func_register
 log = logging.getLogger(__name__)
 
 
-class AsyncTransportBase(ABC):
+class _Template_TransportBase(ABC):
     def __init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size=8192):
         assert isinstance(engine, ProtocolEngineBase)
         self.engine = engine
@@ -44,8 +61,14 @@ class AsyncTransportBase(ABC):
         self.read_buf_size = read_buf_size
         self.remote_closed = False
         self.chain_reader = ChainReader(max_part_size=self.max_msg_size, max_chain_size=self.max_msg_size, max_chain_length=self.engine.max_bc_length)
+        #= threaded start
+        self.reader_thread = Thread(target=self._reader, daemon=True)
+        self.writer_thread = Thread(target=self._writer, daemon=True)
+        #= threaded end
+        #= async start
         self.reader_task = asyncio.create_task(self._reader())
         self.writer_task = asyncio.create_task(self._writer())
+        #= async end
 
     @abstractmethod
     async def _read_data(self, size):
@@ -56,7 +79,11 @@ class AsyncTransportBase(ABC):
         raise NotImplementedError()
     
     async def start(self):
-        pass
+        #= threaded start
+        self.reader_thread.start()
+        self.writer_thread.start()
+        #= threaded end
+        pass #= async
 
     async def _reader(self):
         while True:
@@ -97,12 +124,12 @@ class AsyncTransportBase(ABC):
         return False
 
     async def get_binary_chains(self):
-        log.debug('Starting in get_binary_chains')
+        log.debug('Starting in get_binary_chains') #= async
         while True:
             binary_chain = await self.incoming_queue.get()
             if binary_chain is None:  # closing down
                 return
-            log.debug('Got chain from queue')
+            log.debug('Got chain from queue')  #= async
             yield (binary_chain, self.chain_reader.complete(), self.remote_closed)
 
     async def send_binary_chain(self, binary_chain):
@@ -124,21 +151,21 @@ class AsyncTransportBase(ABC):
         raise NotImplementedError()
 
 
-class AsyncDispatcherBase(ABC):
+class _Template_DispatcherBase(ABC):
     @abstractmethod
-    async def dispatch_incoming(self, msg_channel: AsyncMsgChannel, request: RequestBase, func_info: FuncInfo):
+    async def dispatch_incoming(self, msg_channel: _Template_MsgChannel, request: RequestBase, func_info: FuncInfo):
         raise NotImplementedError()
     @abstractmethod
     async def shutdown(self, timeout=0):
         raise NotImplementedError()
 
 
-async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRequest|IncomingNotification, func_info: FuncInfo):
+async def _template__call_func(msg_channel: _Template_MsgChannel, incoming_msg: IncomingRequest|IncomingNotification, func_info: FuncInfo):
     params = dict()
     injectors = list()
     if func_info.injectable_params:
         for param_name, injector_cls in func_info.injectable_params.items():
-            assert issubclass(injector_cls, AsyncInjectorBase)
+            assert issubclass(injector_cls, _Template_InjectorBase)
             injector = injector_cls(msg_channel, incoming_msg, func_info)
             injectors.append(injector)
             await injector.pre_call_setup()
@@ -162,31 +189,36 @@ async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRe
                 callback_request_id = cb_param_data['callback_request_id']
                 cb_info = cb_param_data['cb_info']
                 if proxy_type == '#cb':
-                    cb_proxy = AsyncCallbackProxy(param_name, callback_request_id, cb_info)
+                    cb_proxy = _Template_CallbackProxy(param_name, callback_request_id, cb_info)
                 elif proxy_type == '#icb':
-                    cb_proxy = AsyncIterableCallbackProxy(param_name, callback_request_id, cb_info)
+                    cb_proxy = _Template_IterableCallbackProxy(param_name, callback_request_id, cb_info)
                 assert isinstance(cb_proxy, CallbackProxyBase)
                 cb_proxy.set_channel(msg_channel)
                 params[param_name] = cb_proxy
+        #= threaded start
+        result = func_info.func(**params)
+        #= threaded end
+        #= async start
         if inspect.iscoroutinefunction(func_info.func):
             result = await func_info.func(**params)
         else:
             result = func_info.func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
+        #= async end
     for injector in injectors:
-        assert isinstance(injector, AsyncInjectorBase)
+        assert isinstance(injector, _Template_InjectorBase)
         await injector.post_call_cleanup()
     return result
 
-async def async_run_request_wait_to_complete(msg_channel: AsyncMsgChannel, request: IncomingRequest, func_info: FuncInfo):
+async def _template__run_request_wait_to_complete(msg_channel: _Template_MsgChannel, request: IncomingRequest, func_info: FuncInfo):
     try:
         if func_info.multipart_reponse:
-            async for part_result in await async_call_func(msg_channel, request, func_info):
+            async for part_result in await _template__call_func(msg_channel, request, func_info):
                 outgoing_msg = OutgoingResponse(request_id=request.id, result=part_result, response_type=ResponseType.MULTIPART)
                 await msg_channel._send_message(outgoing_msg)
             final_response = OutgoingResponse(request_id=request.id, response_type=ResponseType.MULTIPART, final=FinalType.TERMINATOR)
             await msg_channel._send_message(final_response)
         else:
-            result = await async_call_func(msg_channel, request, func_info)
+            result = await _template__call_func(msg_channel, request, func_info)
             if request.request_type == RequestType.QUIET:
                 # never send the result to quiet requests.
                 result = None
@@ -204,88 +236,123 @@ async def async_run_request_wait_to_complete(msg_channel: AsyncMsgChannel, reque
             outgoing_msg = OutgoingException(request_id=request.id, exc_info=exc_info) 
         await msg_channel._send_message(outgoing_msg)
 
-async def async_run_request_not_waiting(msg_channel: AsyncMsgChannel, request: IncomingRequest|IncomingNotification, func_info: FuncInfo):
+async def _template__run_request_not_waiting(msg_channel: _Template_MsgChannel, request: IncomingRequest|IncomingNotification, func_info: FuncInfo):
     try:
         # we send a response (with no data) to slient requests (before calling the function), but nothing for notifications.
         if isinstance(request, IncomingRequest) and request.request_type == RequestType.SILENT:
             outgoing_msg = OutgoingResponse(request_id=request.id)
             await msg_channel._send_message(outgoing_msg)
 
-        await async_call_func(msg_channel, request, func_info)
+        await _template__call_func(msg_channel, request, func_info)
     except Exception as e:
         # FIXME - make notification and slient errors available to the client software
         log.warning(f'Notification or Silent Request {request} raised error {str(e)}')
 
 
-async def async_dispatch_request_or_notification(msg_channel, incoming_msg, func_info):
+async def _template__dispatch_request_or_notification(msg_channel, incoming_msg, func_info):
     if isinstance(incoming_msg, IncomingRequest):
         if incoming_msg.request_type == RequestType.SILENT:
-            await async_run_request_not_waiting(msg_channel, incoming_msg, func_info)
+            await _template__run_request_not_waiting(msg_channel, incoming_msg, func_info)
         else:
-            await async_run_request_wait_to_complete(msg_channel, incoming_msg, func_info)
+            await _template__run_request_wait_to_complete(msg_channel, incoming_msg, func_info)
     elif isinstance(incoming_msg, IncomingNotification):
-        await async_run_request_not_waiting(msg_channel, incoming_msg, func_info)
+        await _template__run_request_not_waiting(msg_channel, incoming_msg, func_info)
     else:
         log.warning(f'Got unhandled message {incoming_msg}')
 
 
-class AsyncDispatcher(AsyncDispatcherBase):
+class _Template_Dispatcher(_Template_DispatcherBase):
     def __init__(self, num_threads, queue_size=10):
         if num_threads < 1:
             raise ValueError('num_threads must be at least 1')
         self.incoming_queue = Queue(queue_size)
         self.time_to_stop = False
 
+        #= async start
         self.tasks = set()
-        self.executor = ThreadPoolExecutor(max_workers=num_threads)  # FIXME: Not using this yet. For non-async functions exported
+        #self.executor = ThreadPoolExecutor(max_workers=num_threads)  # FIXME: Not using this yet. For non-async functions exported
         self.task_fetcher = asyncio.create_task(self._async_task_fetcher())
         # asyncio.ensure_future(self.task_fetcher)
+        #= async end
+        #= threaded start
+        self.threads = [Thread(target=self._worker) for _ in range(num_threads)]
+        for t in self.threads:
+            t.start()
+        #= threaded end
 
+    #= threaded start
+    def _worker(self):
+        log.debug(f'Starting dispatch worker in thread {current_thread().name}.')
+        while not self.time_to_stop:
+            try:
+                msg_channel, incoming_msg, func_info = self.incoming_queue.get(timeout=1)
+            except QueueEmpty:
+                continue
+            _template__dispatch_request_or_notification(msg_channel, incoming_msg, func_info)
+        log.debug(f'Dispatch worker in thread {current_thread().name} finished.')
+    #= threaded end
+    #= async start
     async def _async_task_fetcher(self):
         while not self.time_to_stop:
             try:
                 msg_channel, incoming_msg, func_info = await asyncio.wait_for(self.incoming_queue.get(), timeout=1)
             except asyncio.TimeoutError:
                 continue
-            task = asyncio.create_task(async_dispatch_request_or_notification(msg_channel, incoming_msg, func_info))
+            task = asyncio.create_task(_template__dispatch_request_or_notification(msg_channel, incoming_msg, func_info))
             self.tasks.add(task)
             task.add_done_callback(self.tasks.discard)
             # asyncio.ensure_future(task)
+    #= async end
 
-    async def dispatch_incoming(self, msg_channel: AsyncMsgChannel, request: RequestBase, func_info: FuncInfo):
+    async def dispatch_incoming(self, msg_channel: _Template_MsgChannel, request: RequestBase, func_info: FuncInfo):
         queue_item = (msg_channel, request, func_info)
         await self.incoming_queue.put(queue_item)
 
     async def shutdown(self, timeout=0):
         log.debug('Shutting down dispatcher')
         self.time_to_stop = True
+        #= threaded start
+        for t in self.threads:
+            assert isinstance(t, Thread)
+            t.join(timeout=timeout)
+        #= threaded end
+        #= async start
         for task in self.tasks:
             await task
+        #= async end
         log.debug('Dispatcher shut down')
 
 
-class AsyncMsgChannel(MsgChannelBase):
-    def __init__(self, transport: AsyncTransportBase, initiator: bool, engine: ProtocolEngineBase, dispatcher: AsyncDispatcherBase, channel_tag='', func_registers=None, channel_register=None):
+class _Template_MsgChannel(MsgChannelBase):
+    def __init__(self, transport: _Template_TransportBase, initiator: bool, engine: ProtocolEngineBase, dispatcher: _Template_DispatcherBase, channel_tag='', func_registers=None, channel_register=None):
         MsgChannelBase.__init__(self, initiator, engine, channel_tag, func_registers, channel_register)
         self.transport = transport
         self.dispatcher = dispatcher
-        self.request = AsyncRequestProxyMaker(self)
+        self.request = _Template_RequestProxyMaker(self)
         self._message_id_lock = Lock()
-        self._msg_reader_task = None
+        self._msg_reader_thread = None #= threaded
+        self._msg_reader_task = None #= async
         
     async def get_proxy(self):
-        return AsyncChannelProxy(self)
+        return _Template_ChannelProxy(self)
     
     async def start_channel(self):
         await self.transport.start()
+        #= threaded start
+        self._msg_reader_thread = Thread(target=self._incoming_msg_pump)
+        self._msg_reader_thread.start()
+        #= threaded end
+        #= async start
         self._msg_reader_task = asyncio.create_task(self._incoming_msg_pump())
         # asyncio.ensure_future(self._msg_reader_task)
+        #= async end
         self._channel_register.register(self)
         log.debug(f'Channel {self} registered')
 
     async def wait_for_remote_close(self):
         log.debug(f'Waiting for incoming message pump to finish on {current_thread().name}')
-        await self._msg_reader_task
+        self._msg_reader_thread.join() #= threaded
+        await self._msg_reader_task #= async
 
     async def _incoming_msg_pump(self):
         log.debug(f'message pump started on thread {current_thread().name}')
@@ -335,13 +402,14 @@ class AsyncMsgChannel(MsgChannelBase):
         # FIXME: send ?
         self._channel_register.unregister(self)
         await self.transport.shutdown()
-        await self._msg_reader_task
+        self._msg_reader_thread.join() #= threaded
+        await self._msg_reader_task #= async
         log.debug(f'Channel {self} unregistered and msg_reader thread cleaned up')
 
 
 # FIXME: Test timeouts!
-class AsyncChannelProxy:
-    def __init__(self, channel: AsyncMsgChannel):
+class _Template_ChannelProxy:
+    def __init__(self, channel: _Template_MsgChannel):
         self.channel = channel
 
         self._callbacks = defaultdict(dict)   # self._callback[request_id][param_name] = cb_info
@@ -353,6 +421,16 @@ class AsyncChannelProxy:
         await self.send_request_raw_async(message, cb_reader)
         count = 0
         while True:
+            #= threaded start
+            try:
+                event = return_queue.get(timeout=1)
+            except QueueEmpty:
+                count += 1
+                if timeout and count > timeout:
+                    raise RuntimeError('TIMEOUT')  # FIXME. We should at least clean up incoming registers etc. Do we notify the callee?
+                continue
+            #= threaded end
+            #= async start
             try:
                 event = await asyncio.wait_for(return_queue.get(), timeout=1)
             except asyncio.TimeoutError:
@@ -360,6 +438,7 @@ class AsyncChannelProxy:
                 if timeout and count > timeout:
                     raise RuntimeError('TIMEOUT')  # FIXME. We should at least clean up incoming registers etc. Do we notify the callee?
                 continue
+            #= async end
             if isinstance(event, MessageSentEvent):
                 if isinstance(message, OutgoingNotification):
                     return
@@ -402,7 +481,7 @@ class AsyncChannelProxy:
                         async def iter_func():
                             return anext(cb_info.iter)
                         func_info = FuncInfo(event.target, None, None, None, False, iter_func, is_iterable_callback=True)
-                    await async_dispatch_request_or_notification(self.channel, event, func_info)
+                    await _template__dispatch_request_or_notification(self.channel, event, func_info)
                 except KeyError:
                     log.error(f'No callback found for incoming callback request {event}')
                 continue
@@ -438,10 +517,16 @@ class AsyncChannelProxy:
         async def msg_sent_cb(event):
             wait_event.set()
         await self.channel.queue_message(message, msg_sent_cb)
+        #= threaded start
+        if not wait_event.wait(timeout=timeout):
+            log.error('Timeout error on notificaiton send')  # FIXME: Do we raise an error?
+        #= threaded end
+        #= async start
         try:
             await asyncio.wait_for(wait_event.wait(), timeout=timeout)
         except asyncio.TimeoutError:
             log.error('Timeout error on notificaiton send')  # FIXME: Do we raise an error?
+        #= async end
 
 
     async def send_request_raw_async(self, message: OutgoingRequest, event_callback):
@@ -455,8 +540,8 @@ class AsyncChannelProxy:
         return req_id
 
 
-class AsyncRequestProxy:
-    def __init__(self, msg_channel: AsyncMsgChannel, target: str, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
+class _Template_RequestProxy:
+    def __init__(self, msg_channel: _Template_MsgChannel, target: str, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
         self._msg_channel = msg_channel
         self._target = target
         self._namespace = namespace
@@ -487,8 +572,8 @@ class AsyncRequestProxy:
             return await channel_proxy.send_request(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
     
 
-class AsyncRequestProxyMaker:
-    def __init__(self, msg_channel: AsyncMsgChannel, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
+class _Template_RequestProxyMaker:
+    def __init__(self, msg_channel: _Template_MsgChannel, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
         self._msg_channel = msg_channel
         self._namespace = namespace
         self._node = node
@@ -499,10 +584,10 @@ class AsyncRequestProxyMaker:
         self._multipart_reponse = multipart_reponse
 
     def __getattr__(self, target):
-        return AsyncRequestProxy(self._msg_channel, target, self._namespace, self._node, self._request_type, self._timeout, self._msg_sent_callback, self._ack_callback, self._multipart_reponse)
+        return _Template_RequestProxy(self._msg_channel, target, self._namespace, self._node, self._request_type, self._timeout, self._msg_sent_callback, self._ack_callback, self._multipart_reponse)
     
     def __call__(self, namespace: str=None, node: str=None, request_type: RequestType = RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
-        return AsyncRequestProxyMaker(self._msg_channel, namespace, node, request_type, timeout, msg_sent_callback, ack_callback, multipart_reponse)
+        return _Template_RequestProxyMaker(self._msg_channel, namespace, node, request_type, timeout, msg_sent_callback, ack_callback, multipart_reponse)
 
 
 
@@ -520,7 +605,7 @@ class CallbackProxyBase:
         self._channel = channel
 
 
-class AsyncCallbackProxy(CallbackProxyBase):
+class _Template_CallbackProxy(CallbackProxyBase):
     def __init__(self, cb_param_name, callback_request_id, cb_info):
         CallbackProxyBase.__init__(self, cb_param_name, callback_request_id, cb_info)
         self.request_type = None  # can be changed before sending / FIXME: how we do set a default?
@@ -545,7 +630,7 @@ class AsyncCallbackProxy(CallbackProxyBase):
             await proxy.send_notification(outgoing_msg)
 
 
-class AsyncIterableCallbackProxy(Iterable, CallbackProxyBase):
+class _Template_IterableCallbackProxy(Iterable, CallbackProxyBase):
     def __init__(self, cb_param_name, callback_request_id, cb_info):
         CallbackProxyBase.__init__(self, cb_param_name, callback_request_id, cb_info)
         self._final = False
@@ -569,7 +654,7 @@ class AsyncIterableCallbackProxy(Iterable, CallbackProxyBase):
 
 
 
-class AsyncInjectorBase(ABC):    
+class _Template_InjectorBase(ABC):    
     # FIXME: create base MsgChannel in core so we can assert this is a MsgChannel here.
     def __init__(self, msg_channel, incoming_request: RequestBase, func_info: FuncInfo):
         self.msg_channel = msg_channel
@@ -589,7 +674,7 @@ class AsyncInjectorBase(ABC):
         raise NotImplementedError
 
 
-class AsyncMsgChannelInjector(AsyncInjectorBase):
+class _Template_MsgChannelInjector(_Template_InjectorBase):
     async def pre_call_setup(self):
         pass
 

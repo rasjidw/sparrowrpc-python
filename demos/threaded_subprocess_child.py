@@ -6,11 +6,11 @@ import sys
 from time import sleep
 from threading import current_thread
 
-from lucido.core import make_export_decorator
-from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
-from lucido.threaded import ThreadedDispatcher, ThreadedCallbackProxy
-from lucido.engines.v050 import ProtocolEngine
-from lucido.threaded.transports import ChildSubprocessRunner
+from sparrowrpc.core import make_export_decorator
+from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
+from sparrowrpc.threaded import ThreadedDispatcher, ThreadedCallbackProxy
+from sparrowrpc.engines.v050 import ProtocolEngine
+from sparrowrpc.threaded.transports import ChildSubprocessRunner
 
 
 logging.basicConfig(stream=sys.stderr, level=logging.INFO,

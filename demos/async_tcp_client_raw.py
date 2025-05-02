@@ -2,21 +2,25 @@
 
 import argparse
 import asyncio
+from collections import namedtuple
 import logging
 import sys
 import time
-from threading import current_thread
-from traceback import print_exc
+try:
+    from threading import current_thread
+except ImportError:
+    # micropython
+    current_thread = lambda: namedtuple('cr', ['name'], defaults=['dummy'])
 
 
-from lucido.core import make_export_decorator
-from lucido.exceptions import CalleeException, CallerException
-from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
-from lucido.core import IncomingResponse, IncomingException, OutgoingRequest, RequestCallbackInfo, FinalType, IterableCallbackInfo
-from lucido.engines.v050 import ProtocolEngine
+from sparrowrpc.core import make_export_decorator
+from sparrowrpc.exceptions import CalleeException, CallerException
+from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
+from sparrowrpc.core import IncomingResponse, IncomingException, OutgoingRequest, RequestCallbackInfo, FinalType, IterableCallbackInfo
+from sparrowrpc.engines.v050 import ProtocolEngine
 
-from lucido.asyncio import AsyncDispatcher
-from lucido.asyncio.transports.websockets import AsyncWebsocketConnector
+from sparrowrpc.asyncio import AsyncDispatcher
+from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketConnector
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,

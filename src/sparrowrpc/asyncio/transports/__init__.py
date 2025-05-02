@@ -1,15 +1,26 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 import json
 import logging
 import os
 import socket
 import sys
-from threading import current_thread
+try:
+    from threading import current_thread
+except ImportError:
+    # micropython
+    NameHolder = namedtuple('NameHolder', ['name'])
+    def current_thread():
+        return NameHolder('dummy')
+
 import asyncio
-from asyncio import Queue, QueueEmpty, Lock, Event
+from asyncio import Lock, Event
+try:
+    from asyncio import Queue, QueueEmpty
+except AttributeError:
+    from uasync.queues import Queue, QueueEmpty
 from traceback import format_exc
 from typing import Any
 

@@ -2,17 +2,19 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from collections.abc import Iterable
-from dataclasses import dataclass
+try:
+    from dataclasses import dataclass
+except ImportError:
+    from udataclasses import dataclass  # micropython
 import inspect
 import logging
 import sys
-from typing import Any
+from typing import Any, Iterable
 
 
-if sys.version_info >= (3, 11):
+try:
     from enum import StrEnum
-else:
+except ImportError:
     from backports.strenum import StrEnum
 
 from binarychain import BinaryChain
@@ -65,7 +67,7 @@ class PushIterableInfo:
 
 @dataclass
 class RequestBase:
-    target: str
+    target: str = ''
     namespace: str = ''
     node: str = None
     params: dict = None  # param name -> value
@@ -76,7 +78,11 @@ class RequestBase:
     def __post_init__(self):
         # convert namespace of None to ''
         self.namespace = '' if self.namespace is None else self.namespace
+        self.validate()
 
+    def validate(self):
+        if not self.target:
+            raise ValueError('target must be set')
 
 @dataclass
 class OutgoingRequest(RequestBase):

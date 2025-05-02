@@ -1,5 +1,5 @@
 [project]
-name = "lucido"
+name = "sparrowrpc"
 description = "A Multi-Transport Peer-to-Peer bidirectional RPC System and Protocol Engine"
 version = "0.1.0"
 authors = [
@@ -18,6 +18,10 @@ optional-dependencies.dev = [
 
 optional-dependencies.websockets = [
     "websockets",
+]
+
+optional-dependencies.async_files = [
+    "aiofiles",
 ]
 
 [tool.setuptools]

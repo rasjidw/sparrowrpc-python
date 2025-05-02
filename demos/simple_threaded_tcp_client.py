@@ -6,13 +6,13 @@ import sys
 import threading
 import time
 
-from lucido.core import make_export_decorator, IncomingResponse, IncomingException
-from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
-from lucido.engines import v050, _jsonrpc2l
+from sparrowrpc.core import make_export_decorator, IncomingResponse, IncomingException
+from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
+from sparrowrpc.engines import v050, _jsonrpc2l
 
-from lucido.threaded import ThreadedDispatcher
-from lucido.threaded.transports import ThreadedTcpConnector
-from lucido.threaded.transports.websockets import ThreadedWebsocketConnector
+from sparrowrpc.threaded import ThreadedDispatcher
+from sparrowrpc.threaded.transports import ThreadedTcpConnector
+from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketConnector
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')

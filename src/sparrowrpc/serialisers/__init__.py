@@ -3,7 +3,15 @@ import json
 from typing import Any
 
 
-import msgpack
+try:
+    import msgpack
+    have_msgpack = True
+except ImportError:
+    try:
+        import umsgpack as msgpack  # micropython
+        have_msgpack = True
+    except ImportError:
+        have_msgpack = False
 
 
 
@@ -17,12 +25,13 @@ class BaseSerialiser(ABC):
         raise NotImplementedError()
 
 
-class MsgpackSerialiser(BaseSerialiser):
-    sig = 'MP'
-    def serialise(self, obj_data: Any) -> bytes:
-        return msgpack.packb(obj_data)
-    def deserialise(self, bin_data: bytes) -> Any:
-        return msgpack.unpackb(bin_data)
+if have_msgpack:
+    class MsgpackSerialiser(BaseSerialiser):
+        sig = 'MP'
+        def serialise(self, obj_data: Any) -> bytes:
+            return msgpack.packb(obj_data)
+        def deserialise(self, bin_data: bytes) -> Any:
+            return msgpack.unpackb(bin_data)
 
 
 class JsonSerialiser(BaseSerialiser):

@@ -8,11 +8,11 @@ import sys
 import threading
 import time
 
-from lucido.core import make_export_decorator
-from lucido.serialisers import MsgpackSerialiser, JsonSerialiser
-from lucido.threaded import ThreadedDispatcher
-from lucido.engines.v050 import ProtocolEngine
-from lucido.threaded.transports import ParentSubprocessRunner
+from sparrowrpc.core import make_export_decorator
+from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
+from sparrowrpc.threaded import ThreadedDispatcher
+from sparrowrpc.engines.v050 import ProtocolEngine
+from sparrowrpc.threaded.transports import ParentSubprocessRunner
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
