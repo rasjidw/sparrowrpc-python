@@ -19,24 +19,24 @@ from typing import Any
 from binarychain import BinaryChain, ChainReader
 
 
-from ...core import ProtocolEngineBase
+from ...core import ProtocolEngineBase, OutgoingRequest, OutgoingResponse, IncomingRequest, IncomingResponse
+from ...engines import hs
 
 from ...asyncio import AsyncMsgChannel, AsyncTransportBase
 
 
 log = logging.getLogger(__name__)
 
-    
 
-# Initiator always sends lists, the first entry being the 'command'
-# The acceptor always sends dicts back.
-class AsyncTcpHandshake:
+
+class AsyncHandshake:
     BC_PREFIX = 'HS'
     SET_ENGINE = 'SET_ENGINE'
     REQUEST_CHOICES = 'REQUEST_CHOICES'
-    def __init__(self, conn_socket, initiator: bool, engine_choices: list[ProtocolEngineBase]):
-        assert isinstance(conn_socket, socket.socket)
-        self.conn_socket = conn_socket
+
+    def __init__(self, transport: AsyncTransportBase, initiator: bool, engine_choices: list[ProtocolEngineBase]):
+        self.transport = transport
+        self.hs_engine = hs.ProtocolEngine(self.BC_PREFIX)
         self.initiator = initiator
         self.engine_choices = engine_choices
         self.engine_lookup = {engine.get_engine_signature(): engine for engine in self.engine_choices}
@@ -46,13 +46,21 @@ class AsyncTcpHandshake:
             raise ValueError('Duplicate engine signatures')
         self.engine_selected = None
         self.handshake_complete = False
+        self.out_req_id = 1
+        self.out_resp_id = 1
+        self.cmd_map = {self.SET_ENGINE: self.acceptor_set_engine,
+                        self.REQUEST_CHOICES: self.list_engine_choices,
+                        }
+
     async def start_handshake(self):
         # returns a protocol engine
         if self.initiator:
             await self._initator_handshake()
         else:
             await self._acceptor_handshake()
+        print(f'Handshake complete with engine {self.engine_selected}')
         return self.engine_selected
+
     async def _initator_handshake(self):
         if len(self.engine_choices) == 1:
             engine = self.engine_choices[0]
@@ -64,93 +72,224 @@ class AsyncTcpHandshake:
             else:
                 raise RuntimeError('No compatible engine found')  # FIXME: better exception type
         await self.initator_set_engine(engine)
-    async def _acceptor_handshake(self):
-        cmd_map = {self.SET_ENGINE: self.acceptor_set_engine,
-                   self.REQUEST_CHOICES: self.list_engine_choices,
-                   }
-        while not self.handshake_complete:
-            req = await self._get_handshake_msg()
-            print(repr(req))
-            if not isinstance(req, list):
-                raise RuntimeError('Invalid handshake')
-            cmd = req[0]
-            args = req[1:]
-            print(f'Got cmd: {cmd}, args {args}')
-            cmd_func = cmd_map.get(cmd)
-            if cmd_func:
-                try:
-                    cmd_func(*args)
-                except Exception as e:
-                    msg = f'Handshake dispatch error: {str(e)}'
-                    log.error(msg)
-                    raise RuntimeError(msg)
-            else:
-                raise RuntimeError(f'Invalid handshake command: {cmd}')
+            
     async def request_engine_choices(self):
-        cmd = [self.REQUEST_CHOICES]
-        return self._send_handshake_cmd(cmd)
+        return self._sync_send_and_receive(self.REQUEST_CHOICES)
+    
+    async def _sync_send_and_receive(self, target, **params):
+        out_req = OutgoingRequest(target=target, params=params)
+        message_id =  self.out_req_id
+        self.out_req_id += 1
+
+        bc = self.hs_engine.outgoing_message_to_binary_chain(out_req, message_id)
+        bc.prefix = self.BC_PREFIX
+        self.transport.send_binary_chain(bc)
+        raw_response = await self.transport.incoming_queue.get()  # should be a binary chain
+        assert isinstance(raw_response, BinaryChain)
+        response = self.hs_engine.parse_incoming_message(raw_response)
+        print(response)
+        assert isinstance(response, IncomingResponse)
+        assert response.request_id == message_id
+        return response.result
+    
     async def initator_set_engine(self, engine):
         # send engine choice to acceptor. Wait for response.
         assert isinstance(engine, ProtocolEngineBase)
-        cmd = [self.SET_ENGINE, engine.get_engine_signature()]
-        response = await self._send_handshake_cmd(cmd)
-        if not isinstance(response, dict):
-            raise RuntimeError('Invalid response')
+        response = self._sync_send_and_receive(self.SET_ENGINE, choice=engine.get_engine_signature())
+        print(f'Got set engine response: {response!r}')
+        
         if 'accepted' in response:
             # all good
             self.engine_selected = engine
+            self.handshake_complete = True
             return
+        
         if 'rejected' in response:
             msg = 'Engine {engine.sig} rejected'
             log.error(msg)
             log.info(f"Offered engine signatures: {response['rejected']}")
             raise RuntimeError(msg)
         raise RuntimeError('Invalid response')
-    async def acceptor_set_engine(self, *args):
-        choice = args[0]
+
+    async def _acceptor_handshake(self):
+        cmd_map = {self.SET_ENGINE: self.acceptor_set_engine,
+                   self.REQUEST_CHOICES: self.list_engine_choices,
+                   }
+        while not self.handshake_complete:
+            in_req = await self._get_handshake_msg()
+            print(repr(in_req))
+            assert isinstance(in_req, IncomingRequest)
+            cmd_func = cmd_map.get(in_req.target)
+            if cmd_func:
+                try:
+                    result = await cmd_func(**in_req.params)
+                    await self._send_response(in_req, result)
+                except Exception as e:
+                    msg = f'Handshake dispatch error: {str(e)}'
+                    log.error(msg)
+                    raise RuntimeError(msg)
+            else:
+                raise RuntimeError(f'Invalid handshake command: {in_req.target}')
+            
+    async def _send_response(self, in_req: IncomingRequest, result):
+        id = self.out_resp_id
+        self.out_resp_id += 1
+        out_response = OutgoingResponse(result=result, request_id=in_req.id)
+        out_bc = self.hs_engine.outgoing_message_to_binary_chain(out_response, message_id=id)
+        out_bc.prefix = self.BC_PREFIX
+        await self.transport.send_binary_chain(out_bc)
+
+    async def acceptor_set_engine(self, choice):
         if choice in self.engine_lookup.keys():
-            await self.accept_choice(choice)
+            self.handshake_complete = True
+            self.engine_selected = self.engine_lookup[choice]
+            return dict(accepted=True)
         else:
-            await self.reject_choice()
+            return dict(rejected=self._get_sigs())
+
     async def list_engine_choices(self):
-        await self._send_handshake_msg(dict(choices=self._get_sigs))
-    async def accept_choice(self, sig):
-        await self._send_handshake_msg(dict(accepted=True))
-        self.engine_selected = self.engine_lookup[sig]
-        self.handshake_complete = True
-    async def reject_choice(self):
-        await self._send_handshake_msg(dict(rejected=self._get_sigs()))
-        self.handshake_complete = True
-    async def _send_handshake_cmd(self, cmd):
-        await self._send_handshake_msg(cmd)
-        return self._get_handshake_msg()
-    async def _send_handshake_msg(self, msg):
-        bc = BinaryChain(self.BC_PREFIX, [json.dumps(msg).encode()])
-        print(f'Handshake Out: {repr(bc)}')
-        await self.conn_socket.sendall(bc.serialise())
+        return self._get_sigs()
+    
     async def _get_handshake_msg(self):
-        max_size = 1024  # way more than can possibly be needed for a handshake
-        chain_reader = ChainReader(max_size, max_size, max_chain_length=1)
-        while True:
-            data = await self.conn_socket.recv(1)
-            try:
-                response = next(chain_reader.get_binary_chains(data))
-                break
-            except StopIteration:
-                continue
-        assert isinstance(response, BinaryChain)
-        print(f'Handshake In: {repr(response)}')
-        if response.prefix == self.BC_PREFIX:
-            return json.loads(response.parts[0])
+        raw_bc = await self.transport.incoming_queue.get()
+        assert isinstance(raw_bc, BinaryChain)
+        print(f'Handshake In: {repr(raw_bc)}')
+        if raw_bc.prefix == self.BC_PREFIX:
+            incoming_msg = self.hs_engine.parse_incoming_message(raw_bc)
+            if isinstance(incoming_msg, IncomingRequest):
+                return incoming_msg
+            else:
+                raise RuntimeError('Invalid incoming handshake message')
         else:
             raise RuntimeError('Invalid prefix')
+        
     async def _get_sigs(self):
         return [engine.get_engine_signature() for engine in self.engine_choices]
 
 
+# # Initiator always sends lists, the first entry being the 'command'
+# # The acceptor always sends dicts back.
+# class AsyncTcpHandshake:
+#     BC_PREFIX = 'HS'
+#     SET_ENGINE = 'SET_ENGINE'
+#     REQUEST_CHOICES = 'REQUEST_CHOICES'
+#     def __init__(self, conn_socket, initiator: bool, engine_choices: list[ProtocolEngineBase]):
+#         assert isinstance(conn_socket, socket.socket)
+#         self.conn_socket = conn_socket
+#         self.initiator = initiator
+#         self.engine_choices = engine_choices
+#         self.engine_lookup = {engine.get_engine_signature(): engine for engine in self.engine_choices}
+#         if not self.engine_choices:
+#             raise ValueError('At least one engine choice must be passed in')
+#         if len(self.engine_choices) != len(self.engine_lookup):
+#             raise ValueError('Duplicate engine signatures')
+#         self.engine_selected = None
+#         self.handshake_complete = False
+#     async def start_handshake(self):
+#         # returns a protocol engine
+#         if self.initiator:
+#             await self._initator_handshake()
+#         else:
+#             await self._acceptor_handshake()
+#         return self.engine_selected
+#     async def _initator_handshake(self):
+#         if len(self.engine_choices) == 1:
+#             engine = self.engine_choices[0]
+#         else:
+#             offered_sigs = set(self.request_engine_choices())
+#             for engine in self.engine_choices:
+#                 if engine._sig in offered_sigs:
+#                     break
+#             else:
+#                 raise RuntimeError('No compatible engine found')  # FIXME: better exception type
+#         await self.initator_set_engine(engine)
+#     async def _acceptor_handshake(self):
+#         cmd_map = {self.SET_ENGINE: self.acceptor_set_engine,
+#                    self.REQUEST_CHOICES: self.list_engine_choices,
+#                    }
+#         while not self.handshake_complete:
+#             req = await self._get_handshake_msg()
+#             print(repr(req))
+#             if not isinstance(req, list):
+#                 raise RuntimeError('Invalid handshake')
+#             cmd = req[0]
+#             args = req[1:]
+#             print(f'Got cmd: {cmd}, args {args}')
+#             cmd_func = cmd_map.get(cmd)
+#             if cmd_func:
+#                 try:
+#                     cmd_func(*args)
+#                 except Exception as e:
+#                     msg = f'Handshake dispatch error: {str(e)}'
+#                     log.error(msg)
+#                     raise RuntimeError(msg)
+#             else:
+#                 raise RuntimeError(f'Invalid handshake command: {cmd}')
+#     async def request_engine_choices(self):
+#         cmd = [self.REQUEST_CHOICES]
+#         return self._send_handshake_cmd(cmd)
+#     async def initator_set_engine(self, engine):
+#         # send engine choice to acceptor. Wait for response.
+#         assert isinstance(engine, ProtocolEngineBase)
+#         cmd = [self.SET_ENGINE, engine.get_engine_signature()]
+#         response = await self._send_handshake_cmd(cmd)
+#         if not isinstance(response, dict):
+#             raise RuntimeError('Invalid response')
+#         if 'accepted' in response:
+#             # all good
+#             self.engine_selected = engine
+#             return
+#         if 'rejected' in response:
+#             msg = 'Engine {engine.sig} rejected'
+#             log.error(msg)
+#             log.info(f"Offered engine signatures: {response['rejected']}")
+#             raise RuntimeError(msg)
+#         raise RuntimeError('Invalid response')
+#     async def acceptor_set_engine(self, *args):
+#         choice = args[0]
+#         if choice in self.engine_lookup.keys():
+#             await self.accept_choice(choice)
+#         else:
+#             await self.reject_choice()
+#     async def list_engine_choices(self):
+#         await self._send_handshake_msg(dict(choices=self._get_sigs))
+#     async def accept_choice(self, sig):
+#         await self._send_handshake_msg(dict(accepted=True))
+#         self.engine_selected = self.engine_lookup[sig]
+#         self.handshake_complete = True
+#     async def reject_choice(self):
+#         await self._send_handshake_msg(dict(rejected=self._get_sigs()))
+#         self.handshake_complete = True
+#     async def _send_handshake_cmd(self, cmd):
+#         await self._send_handshake_msg(cmd)
+#         return self._get_handshake_msg()
+#     async def _send_handshake_msg(self, msg):
+#         bc = BinaryChain(self.BC_PREFIX, [json.dumps(msg).encode()])
+#         print(f'Handshake Out: {repr(bc)}')
+#         await self.conn_socket.sendall(bc.serialise())
+#     async def _get_handshake_msg(self):
+#         max_size = 1024  # way more than can possibly be needed for a handshake
+#         chain_reader = ChainReader(max_size, max_size, max_chain_length=1)
+#         while True:
+#             data = await self.conn_socket.recv(1)
+#             try:
+#                 response = next(chain_reader.get_binary_chains(data))
+#                 break
+#             except StopIteration:
+#                 continue
+#         assert isinstance(response, BinaryChain)
+#         print(f'Handshake In: {repr(response)}')
+#         if response.prefix == self.BC_PREFIX:
+#             return json.loads(response.parts[0])
+#         else:
+#             raise RuntimeError('Invalid prefix')
+#     async def _get_sigs(self):
+#         return [engine.get_engine_signature() for engine in self.engine_choices]
+
+
 class AsyncTcpTransport(AsyncTransportBase):
-    def __init__(self, engine, conn_socket: socket.socket, max_msg_size=10*1024*1024, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
-        AsyncTransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
+    def __init__(self, conn_socket: socket.socket, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
+        AsyncTransportBase.__init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.socket = conn_socket
 
     async def _read_data(self, size):
@@ -173,16 +312,19 @@ class AsyncTcpConnector:
             self.engine_choices = engine_choices
         self.dispatcher = dispatcher
         self.func_registers = func_registers
-        self.handshake_cls = handshake_cls if handshake_cls else AsyncTcpHandshake
+        self.handshake_cls = handshake_cls if handshake_cls else AsyncHandshake
         self.initiator = True
     async def connect(self, host, port):
         conn_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         remote_address = (host, port)
         conn_socket.connect(remote_address)
-        handshake = self.handshake_cls(conn_socket, self.initiator, self.engine_choices)
+        transport = AsyncTcpTransport(conn_socket)
+        transport.start()
+        handshake = AsyncHandshake(transport, self.initiator, self.engine_choices)
+        #handshake = self.handshake_cls(conn_socket, self.initiator, self.engine_choices)
         handshake.start_handshake()
         if handshake.engine_selected:
-            transport = AsyncTcpTransport(handshake.engine_selected, conn_socket)  # FIX_ME: Allow options to be set / passed in??
+            # transport = AsyncTcpTransport(handshake.engine_selected, conn_socket)  # FIX_ME: Allow options to be set / passed in??
             return AsyncMsgChannel(transport, initiator=self.initiator, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
         else:
             raise RuntimeError('No engine set')
@@ -196,7 +338,7 @@ class AsyncTcpListener:
             self.engine_choices = engine_choices
         self.dispatcher = dispatcher
         self.func_registers = func_registers
-        self.handshake_cls = handshake_cls if handshake_cls else AsyncTcpHandshake
+        self.handshake_cls = handshake_cls if handshake_cls else AsyncHandshake
         self.initiator = False
         self.tcp_server = None
         self.address = None
@@ -225,18 +367,20 @@ class AsyncTcpListener:
         log.info('Server Shutdown Complete')
 
     async def _start_channel(self, client_socket, remote_address):
-        handshake = self.handshake_cls(client_socket, self.initiator, self.engine_choices)
+        transport = AsyncTcpTransport(client_socket)
+        transport.start()
+        handshake = self.handshake_cls(transport, self.initiator, self.engine_choices)
         handshake.start_handshake()
         if handshake.engine_selected:
-            transport = AsyncTcpTransport(handshake.engine_selected, client_socket)
+            #transport = AsyncTcpTransport(client_socket)
             channel = AsyncMsgChannel(transport, initiator=False, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             channel.start_channel()
 
 
 class StreamTransport(AsyncTransportBase):
-    def __init__(self, incoming_stream, outgoing_stream, engine, max_msg_size=10*1024*1024, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, read_buf_size=8192):
-        AsyncTransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size)
+    def __init__(self, incoming_stream, outgoing_stream, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, read_buf_size=8192):
+        AsyncTransportBase.__init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size)
         self.incoming_stream = incoming_stream
         self.outgoing_stream = outgoing_stream
 

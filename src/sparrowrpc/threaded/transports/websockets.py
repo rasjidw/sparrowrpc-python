@@ -16,8 +16,8 @@ log = logging.getLogger(__name__)
 
 
 class ThreadedWebsocketTransport(ThreadedTransportBase):
-    def __init__(self, engine, websocket, max_msg_size=10*1024*1024, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
-        ThreadedTransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
+    def __init__(self, websocket, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
+        ThreadedTransportBase.__init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.websocket = websocket
 
     def _read_data(self, size):
@@ -43,7 +43,7 @@ class ThreadedWebsocketConnector:
 
     def connect(self, ws_uri):
         websocket = client.connect(ws_uri)
-        transport = ThreadedWebsocketTransport(self.engine, websocket)  # FIX_ME: Allow options to be set / passed in??
+        transport = ThreadedWebsocketTransport(websocket)  # FIX_ME: Allow options to be set / passed in??
         return ThreadedMsgChannel(transport, initiator=self.initiator, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
@@ -89,7 +89,7 @@ class ThreadedWebsocketListener:
         engine = self.engine_lookup.get(requested_engine_sig)
         if engine:
             log.info(f'Accepted connection request from {remote_address} with path {websocket_path}')
-            transport = ThreadedWebsocketTransport(engine, client_websocket)
+            transport = ThreadedWebsocketTransport(client_websocket)
             channel = ThreadedMsgChannel(transport, initiator=False, engine=engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             channel.start_channel()

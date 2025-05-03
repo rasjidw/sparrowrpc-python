@@ -49,15 +49,15 @@ def get_thread_or_task_name():
 
 
 class _Template_TransportBase(ABC):
-    def __init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size=8192):
-        assert isinstance(engine, ProtocolEngineBase)
-        self.engine = engine
+    def __init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size=8192):
         self.max_msg_size = max_msg_size
+        self.max_bc_length = max_bc_length
         self.incoming_queue = Queue(maxsize=incoming_msg_queue_size)
         self.outgoing_queue = Queue(maxsize=outgoing_msg_queue_size)
         self.read_buf_size = read_buf_size
         self.remote_closed = False
-        self.chain_reader = ChainReader(max_part_size=self.max_msg_size, max_chain_size=self.max_msg_size, max_chain_length=self.engine.max_bc_length)
+        self.chain_reader = ChainReader(max_part_size=self.max_msg_size, max_chain_size=self.max_msg_size, max_chain_length=self.max_bc_length)
+        self.started = False
         #= threaded start
         self.reader_thread = Thread(target=self._reader, daemon=True)
         self.writer_thread = Thread(target=self._writer, daemon=True)
@@ -76,11 +76,12 @@ class _Template_TransportBase(ABC):
         raise NotImplementedError()
     
     async def start(self):
-        #= threaded start
-        self.reader_thread.start()
-        self.writer_thread.start()
-        #= threaded end
-        pass #= async
+        if not self.started:
+            #= threaded start
+            self.reader_thread.start()
+            self.writer_thread.start()
+            #= threaded end
+            self.started = True
 
     async def _reader(self):
         while True:

@@ -20,8 +20,8 @@ log = logging.getLogger(__name__)
 
 
 class _Template_WebsocketTransport(_Template_TransportBase):
-    def __init__(self, engine, websocket, max_msg_size=10*1024*1024, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
-        _Template_TransportBase.__init__(self, engine, max_msg_size, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
+    def __init__(self, websocket, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
+        _Template_TransportBase.__init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.websocket = websocket
 
     async def _read_data(self, size):
@@ -47,7 +47,7 @@ class _Template_WebsocketConnector:
 
     async def connect(self, ws_uri):
         websocket = await client.connect(ws_uri)
-        transport = _Template_WebsocketTransport(self.engine, websocket)  # FIX_ME: Allow options to be set / passed in??
+        transport = _Template_WebsocketTransport(websocket)  # FIX_ME: Allow options to be set / passed in??
         return _Template_MsgChannel(transport, initiator=self.initiator, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
@@ -93,7 +93,7 @@ class _Template_WebsocketListener:
         engine = self.engine_lookup.get(requested_engine_sig)
         if engine:
             log.info(f'Accepted connection request from {remote_address} with path {websocket_path}')
-            transport = _Template_WebsocketTransport(engine, client_websocket)
+            transport = _Template_WebsocketTransport(client_websocket)
             channel = _Template_MsgChannel(transport, initiator=False, engine=engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             await channel.start_channel()

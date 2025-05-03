@@ -28,7 +28,8 @@ log = logging.getLogger(__name__)
 class ProtocolEngine(ProtocolEngineBase):
     _sig = 'hs'
     max_bc_length = 1   # params or result (prefix not counted)
-    def __init__(self):
+    def __init__(self, required_chain_prefix=''):
+        self.required_chain_prefix = required_chain_prefix
         self.message_id = 1
         self.always_send_ids = False
 
@@ -109,8 +110,10 @@ class ProtocolEngine(ProtocolEngineBase):
     
     def parse_incoming_message(self, incoming_bin_chain: BinaryChain):
         msg_parts = incoming_bin_chain.parts
-        if not (incoming_bin_chain.prefix == '' and len(msg_parts) == 1):
-            raise ProtocolError('invalid binary chain')
+        if incoming_bin_chain.prefix != self.required_chain_prefix:
+            raise ProtocolError(f'Expected prefix of {self.required_chain_prefix!r} but got {incoming_bin_chain.prefix!r}')
+        if len(msg_parts) != 1:
+            raise ProtocolError(f'invalid binary chain - expected msg_parts of 1 but got {len(msg_parts)}')
 
         data = json.loads(msg_parts[0].decode())
         if 'method' in data:
