@@ -117,13 +117,8 @@ async def main(use_msgpack, use_websocket):
 
     background_task = asyncio.create_task(background_counter(channel, 5, 1))
 
-    print('Sleeping 8 on the main thread')
-    await asyncio.sleep(8)
-
-    print('End of sleep')
-
-    print('Waiting for backgroud task')
-    await background_task
+    print('Sleeping 2 on the main thread')
+    await asyncio.sleep(2)
 
     print('Multipart response (returns a generator)')
     proxy = channel.request(multipart_reponse=True)
@@ -132,17 +127,21 @@ async def main(use_msgpack, use_websocket):
         print(x)
     print('Multipart response complete.')
 
-    # print('Sleeping 2 on the main thread')
-    # time.sleep(2)
+    print('Sleeping 2 on the main thread')
+    asyncio.sleep(2)
 
-    # print('Iterable param (IterableCallback) - Pull')
-    # iter_data = iter([1, 2, 3, 4])
-    # result = channel.request.iterable_param(nums=iter_data)
-    # print(f'Got result: {result}')
+    print('Iterable param (IterableCallback) - Pull')
+    async def iter_data():
+        for x in [1, 2, 3, 4]:
+            yield x
+    result = await channel.request.iterable_param(nums=iter_data)
+    print(f'Got result: {result}')
 
-    # print('Sleeping 2 on the main thread')
-    # time.sleep(2)
+    print('Sleeping 2 on the main thread')
+    time.sleep(2)
 
+    print('Waiting for backgroud task')
+    await background_task
 
     # for (a, b) in [(1, 2), (1, 0), (3, 4), (11, 22), (None, 2), ('a', 'b')]:
     #     try:
