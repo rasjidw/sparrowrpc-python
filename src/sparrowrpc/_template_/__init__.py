@@ -331,7 +331,7 @@ class _Template_MsgChannel(MsgChannelBase):
         self._msg_reader_thread = None #= threaded
         self._msg_reader_task = None #= async
         
-    async def get_proxy(self):
+    def get_proxy(self):
         return _Template_ChannelProxy(self)
     
     async def start_channel(self):
@@ -441,13 +441,26 @@ class _Template_ChannelProxy:
                 if isinstance(message, OutgoingNotification):
                     return
                 if msg_sent_callback:
-                    await msg_sent_callback(event)
+                    #= async start
+                    if asyncio.iscoroutine(msg_sent_callback):
+                        await msg_sent_callback(event)
+                    else:
+                        msg_sent_callback(event)
+                    #= async end
+                    msg_sent_callback(event) #= threaded
                 else:
                     log.debug(f'Got msg sent event')
                 continue
             if isinstance(event, IncomingAcknowledge):
                 if ack_callback:
-                    await ack_callback(event)   # FIXME: Do we return the event, or just call the callback with None?
+                    # FIXME: Do we return the event, or just call the callback with None?
+                    #= async start
+                    if asyncio.iscoroutine(ack_callback):
+                        await ack_callback(event)
+                    else:
+                        ack_callback(event)
+                    #= async end
+                    ack_callback(event) #= threaded
                 else:
                     log.info(f'Incoming ack received, but no callback passed in')
                 continue
@@ -497,7 +510,7 @@ class _Template_ChannelProxy:
             log.warning(f'Unhandled event {event}')
 
     async def send_request_multipart_result_as_generator(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None):
-        async for result in await self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.MULTIPART):
+        async for result in self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.MULTIPART):
             yield result
 
     async def send_request(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None):
@@ -550,7 +563,7 @@ class _Template_RequestProxy:
         self._ack_callback = ack_callback
         self._multipart_reponse = multipart_reponse
 
-    async def __call__(self, **kwargs):
+    def __call__(self, **kwargs):
         params = kwargs
         params = dict()
         callback_params = dict()
@@ -563,11 +576,11 @@ class _Template_RequestProxy:
             else:
                 params[param] = value
         request = OutgoingRequest(self._target, namespace=self._namespace, node=self._node, params=params, callback_params=callback_params, request_type=self._request_type, acknowledge=bool(self._ack_callback))
-        channel_proxy = await self._msg_channel.get_proxy()
+        channel_proxy = self._msg_channel.get_proxy()
         if self._multipart_reponse:
-            return await channel_proxy.send_request_multipart_result_as_generator(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
+            return channel_proxy.send_request_multipart_result_as_generator(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
         else:
-            return await channel_proxy.send_request(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
+            return channel_proxy.send_request(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
     
 
 class _Template_RequestProxyMaker:
@@ -620,7 +633,7 @@ class _Template_CallbackProxy(CallbackProxyBase):
         else:
             outgoing_msg = OutgoingNotification(target=self._cb_param_name, callback_request_id=self._callback_request_id, params=kwargs)
         log.debug(f'Callback Proxy call: {repr(outgoing_msg)}')
-        proxy = await self._channel.get_proxy()
+        proxy = self._channel.get_proxy()
         if self.request_type:
             result = await proxy.send_request(outgoing_msg)
             return result
@@ -642,7 +655,7 @@ class _Template_IterableCallbackProxy(Iterable, CallbackProxyBase):
         
         outgoing_msg = OutgoingRequest(target=self._cb_param_name, callback_request_id=self._callback_request_id)
         log.debug(f'CallbackIterableProxy call: {repr(outgoing_msg)}')
-        proxy = await self._channel.get_proxy()
+        proxy = self._channel.get_proxy()
         result, final = await proxy.send_request_for_iter(outgoing_msg)
         if final == FinalType.TERMINATOR:
             raise StopAsyncIteration()

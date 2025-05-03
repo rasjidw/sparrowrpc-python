@@ -369,7 +369,8 @@ class ThreadedChannelProxy:
                 continue
             if isinstance(event, IncomingAcknowledge):
                 if ack_callback:
-                    ack_callback(event)   # FIXME: Do we return the event, or just call the callback with None?
+                    # FIXME: Do we return the event, or just call the callback with None?
+                    ack_callback(event)
                 else:
                     log.info(f'Incoming ack received, but no callback passed in')
                 continue

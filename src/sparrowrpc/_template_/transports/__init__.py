@@ -78,7 +78,7 @@ class _Template_Handshake:
         await self.initator_set_engine(engine)
             
     async def request_engine_choices(self):
-        return self._sync_send_and_receive(self.REQUEST_CHOICES)
+        return await self._sync_send_and_receive(self.REQUEST_CHOICES)
     
     async def _sync_send_and_receive(self, target, **params):
         out_req = OutgoingRequest(target=target, params=params)
@@ -87,7 +87,7 @@ class _Template_Handshake:
 
         bc = self.hs_engine.outgoing_message_to_binary_chain(out_req, message_id)
         bc.prefix = self.BC_PREFIX
-        self.transport.send_binary_chain(bc)
+        await self.transport.send_binary_chain(bc)
         raw_response = await self.transport.incoming_queue.get()  # should be a binary chain
         assert isinstance(raw_response, BinaryChain)
         response = self.hs_engine.parse_incoming_message(raw_response)
@@ -99,7 +99,7 @@ class _Template_Handshake:
     async def initator_set_engine(self, engine):
         # send engine choice to acceptor. Wait for response.
         assert isinstance(engine, ProtocolEngineBase)
-        response = self._sync_send_and_receive(self.SET_ENGINE, choice=engine.get_engine_signature())
+        response = await self._sync_send_and_receive(self.SET_ENGINE, choice=engine.get_engine_signature())
         print(f'Got set engine response: {response!r}')
         
         if 'accepted' in response:
@@ -230,9 +230,9 @@ class _Template_TcpConnector:
         reader, writer = await asyncio.open_connection(host, port)
         transport = _Template_TcpAsyncTransport(reader, writer)
         #= async end
-        transport.start()
+        await transport.start()
         handshake = self.handshake_cls(transport, self.initiator, self.engine_choices)
-        handshake.start_handshake()
+        await handshake.start_handshake()
         if handshake.engine_selected:
             return _Template_MsgChannel(transport, initiator=self.initiator, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
         else:
