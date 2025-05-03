@@ -189,17 +189,16 @@ class ThreadedTcpConnector:
         self.func_registers = func_registers
         self.handshake_cls = handshake_cls if handshake_cls else ThreadedHandshake
         self.initiator = True
+        
     def connect(self, host, port):
         conn_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         remote_address = (host, port)
         conn_socket.connect(remote_address)
         transport = ThreadedTcpTransport(conn_socket)
         transport.start()
-        handshake = ThreadedHandshake(transport, self.initiator, self.engine_choices)
-        #handshake = self.handshake_cls(conn_socket, self.initiator, self.engine_choices)
+        handshake = self.handshake_cls(transport, self.initiator, self.engine_choices)
         handshake.start_handshake()
         if handshake.engine_selected:
-            # transport = ThreadedTcpTransport(handshake.engine_selected, conn_socket)  # FIX_ME: Allow options to be set / passed in??
             return ThreadedMsgChannel(transport, initiator=self.initiator, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
         else:
             raise RuntimeError('No engine set')

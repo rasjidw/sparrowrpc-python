@@ -218,17 +218,22 @@ class _Template_TcpConnector:
         self.func_registers = func_registers
         self.handshake_cls = handshake_cls if handshake_cls else _Template_Handshake
         self.initiator = True
+        
     async def connect(self, host, port):
+        #= threaded start
         conn_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         remote_address = (host, port)
         conn_socket.connect(remote_address)
         transport = _Template_TcpTransport(conn_socket)
+        #= threaded end
+        #= async start
+        reader, writer = await asyncio.open_connection(host, port)
+        transport = _Template_TcpAsyncTransport(reader, writer)
+        #= async end
         transport.start()
-        handshake = _Template_Handshake(transport, self.initiator, self.engine_choices)
-        #handshake = self.handshake_cls(conn_socket, self.initiator, self.engine_choices)
+        handshake = self.handshake_cls(transport, self.initiator, self.engine_choices)
         handshake.start_handshake()
         if handshake.engine_selected:
-            # transport = _Template_TcpTransport(handshake.engine_selected, conn_socket)  # FIX_ME: Allow options to be set / passed in??
             return _Template_MsgChannel(transport, initiator=self.initiator, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
         else:
             raise RuntimeError('No engine set')
