@@ -40,7 +40,7 @@ async def slow_counter(count_to: int, delay: int = 0.5, progress: AsyncCallbackP
         msg = f'Counted to {x} in thread - {current_thread().name}'
         if progress:
             await progress(message=msg)
-        asyncio.sleep(delay)
+        await asyncio.sleep(delay)
     result = x + 1
     return f'Counted to {result} with a delay of {delay} between counts. All done.'
 
