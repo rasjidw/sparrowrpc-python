@@ -466,15 +466,14 @@ class ThreadedRequestProxy:
         self._multipart_reponse = multipart_reponse
 
     def __call__(self, **kwargs):
-        params = kwargs
         params = dict()
         callback_params = dict()
         for param, value in kwargs.items():
-            if callable(value):
-                callback_params[param] = RequestCallbackInfo(value)
             # not just checking isinstance(value, Iterable) because we don't want lists etc
-            elif hasattr(value, '__iter__') and hasattr(value, '__next__'):
+            if hasattr(value, '__iter__') and hasattr(value, '__next__'):
                 callback_params[param] = IterableCallbackInfo(value)
+            elif callable(value):
+                callback_params[param] = RequestCallbackInfo(value)
             else:
                 params[param] = value
         request = OutgoingRequest(self._target, namespace=self._namespace, node=self._node, params=params, callback_params=callback_params, request_type=self._request_type, acknowledge=bool(self._ack_callback))

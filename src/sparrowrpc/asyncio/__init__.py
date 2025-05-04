@@ -177,10 +177,14 @@ async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRe
                 assert isinstance(cb_proxy, CallbackProxyBase)
                 cb_proxy.set_channel(msg_channel)
                 params[param_name] = cb_proxy
-        if inspect.iscoroutinefunction(func_info.func):
-            result = await func_info.func(**params)
+        if inspect.isawaitable(func_info.func):
+            raw_result = await func_info.func(**params)
         else:
-            result = func_info.func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
+            raw_result = func_info.func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
+        if inspect.isawaitable(raw_result):
+            result = await raw_result
+        else:
+            result = raw_result
     for injector in injectors:
         assert isinstance(injector, AsyncInjectorBase)
         await injector.post_call_cleanup()
@@ -416,7 +420,7 @@ class AsyncChannelProxy:
                         func_info = FuncInfo(event.target, None, None, None, False, cb_info.func)
                     elif isinstance(cb_info, IterableCallbackInfo):
                         async def iter_func():
-                            return anext(cb_info.iter)
+                            return await anext(cb_info.iter)
                         func_info = FuncInfo(event.target, None, None, None, False, iter_func, is_iterable_callback=True)
                     await async_dispatch_request_or_notification(self.channel, event, func_info)
                 except KeyError:
@@ -484,15 +488,14 @@ class AsyncRequestProxy:
         self._multipart_reponse = multipart_reponse
 
     def __call__(self, **kwargs):
-        params = kwargs
         params = dict()
         callback_params = dict()
         for param, value in kwargs.items():
-            if callable(value):
-                callback_params[param] = RequestCallbackInfo(value)
             # not just checking isinstance(value, Iterable) because we don't want lists etc
-            elif hasattr(value, '__aiter__') and hasattr(value, '__anext__'):
+            if hasattr(value, '__aiter__') and hasattr(value, '__anext__'):
                 callback_params[param] = IterableCallbackInfo(value)
+            elif callable(value):
+                callback_params[param] = RequestCallbackInfo(value)
             else:
                 params[param] = value
         request = OutgoingRequest(self._target, namespace=self._namespace, node=self._node, params=params, callback_params=callback_params, request_type=self._request_type, acknowledge=bool(self._ack_callback))

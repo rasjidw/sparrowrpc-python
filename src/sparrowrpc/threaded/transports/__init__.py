@@ -54,7 +54,7 @@ class ThreadedHandshake:
             self._initator_handshake()
         else:
             self._acceptor_handshake()
-        print(f'Handshake complete with engine {self.engine_selected}')
+        log.debug(f'Handshake complete with engine {self.engine_selected}')
         return self.engine_selected
 
     def _initator_handshake(self):
@@ -83,7 +83,6 @@ class ThreadedHandshake:
         raw_response = self.transport.incoming_queue.get()  # should be a binary chain
         assert isinstance(raw_response, BinaryChain)
         response = self.hs_engine.parse_incoming_message(raw_response)
-        print(response)
         assert isinstance(response, IncomingResponse)
         assert response.request_id == message_id
         return response.result
@@ -92,7 +91,7 @@ class ThreadedHandshake:
         # send engine choice to acceptor. Wait for response.
         assert isinstance(engine, ProtocolEngineBase)
         response = self._sync_send_and_receive(self.SET_ENGINE, choice=engine.get_engine_signature())
-        print(f'Got set engine response: {response!r}')
+        log.debug(f'Got set engine response: {response!r}')
         
         if 'accepted' in response:
             # all good
@@ -113,7 +112,6 @@ class ThreadedHandshake:
                    }
         while not self.handshake_complete:
             in_req = self._get_handshake_msg()
-            print(repr(in_req))
             assert isinstance(in_req, IncomingRequest)
             cmd_func = cmd_map.get(in_req.target)
             if cmd_func:
@@ -149,7 +147,6 @@ class ThreadedHandshake:
     def _get_handshake_msg(self):
         raw_bc = self.transport.incoming_queue.get()
         assert isinstance(raw_bc, BinaryChain)
-        print(f'Handshake In: {repr(raw_bc)}')
         if raw_bc.prefix == self.BC_PREFIX:
             incoming_msg = self.hs_engine.parse_incoming_message(raw_bc)
             if isinstance(incoming_msg, IncomingRequest):

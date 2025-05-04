@@ -126,7 +126,7 @@ def main(use_msgpack, use_websocket):
     time.sleep(2)
 
     print('Iterable param (IterableCallback) - Pull')
-    iter_data = iter([1, 2, 3, 4])
+    iter_data = iter([1, 10, 30, 3])
     result = channel.request.iterable_param(nums=iter_data)
     print(f'Got result: {result}')
 

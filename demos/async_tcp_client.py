@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import logging
 import sys
-import time
 
 from sparrowrpc.core import make_export_decorator, IncomingResponse, IncomingException
 from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
@@ -128,17 +127,19 @@ async def main(use_msgpack, use_websocket):
     print('Multipart response complete.')
 
     print('Sleeping 2 on the main thread')
-    asyncio.sleep(2)
+    await asyncio.sleep(2)
 
     print('Iterable param (IterableCallback) - Pull')
     async def iter_data():
-        for x in [1, 2, 3, 4]:
+        for x in [1, 10, 30, 3]:
             yield x
-    result = await channel.request.iterable_param(nums=iter_data)
+    param = iter_data()
+    print(dir(param))
+    result = await channel.request.iterable_param(nums=param)
     print(f'Got result: {result}')
 
     print('Sleeping 2 on the main thread')
-    time.sleep(2)
+    await asyncio.sleep(2)
 
     print('Waiting for backgroud task')
     await background_task
