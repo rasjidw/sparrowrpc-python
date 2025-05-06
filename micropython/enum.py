@@ -1,0 +1,3 @@
+class StrEnum:
+    pass
+
