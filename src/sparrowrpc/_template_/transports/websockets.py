@@ -1,6 +1,5 @@
 
 import logging
-from threading import Thread
 
 if 'threaded' in __name__: #= remove
     from websockets.sync import client  #= threaded <

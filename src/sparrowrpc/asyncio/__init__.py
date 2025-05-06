@@ -15,10 +15,18 @@ try:
 except AttributeError:
     from uasync.queues import Queue, QueueEmpty
 
+    # FIXME: add back ThreadPoolExecutor for non-micropython
+    # also add @non_blocking decorator
 #from concurrent.futures import ThreadPoolExecutor
 from typing import AsyncIterable as Iterable
 from traceback import format_exc
 from typing import Any, TYPE_CHECKING
+
+
+if sys.implementation.name == 'micropython':
+    def anext(obj):
+        return obj.__next__()
+
 
 from binarychain import BinaryChain, ChainReader
 
@@ -192,7 +200,7 @@ async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRe
 
 async def async_run_request_wait_to_complete(msg_channel: AsyncMsgChannel, request: IncomingRequest, func_info: FuncInfo):
     try:
-        if func_info.multipart_reponse:
+        if func_info.multipart_response:
             async for part_result in await async_call_func(msg_channel, request, func_info):
                 outgoing_msg = OutgoingResponse(request_id=request.id, result=part_result, response_type=ResponseType.MULTIPART)
                 await msg_channel._send_message(outgoing_msg)
@@ -417,11 +425,11 @@ class AsyncChannelProxy:
                 try:
                     cb_info = self._callbacks[event.callback_request_id][event.target]
                     if isinstance(cb_info, RequestCallbackInfo):
-                        func_info = FuncInfo(event.target, None, None, None, False, cb_info.func)
+                        func_info = FuncInfo(target_name=event.target, func=cb_info.func)
                     elif isinstance(cb_info, IterableCallbackInfo):
                         async def iter_func():
                             return await anext(cb_info.iter)
-                        func_info = FuncInfo(event.target, None, None, None, False, iter_func, is_iterable_callback=True)
+                        func_info = FuncInfo(target_name=event.target, func=iter_func, is_iterable_callback=True)
                     await async_dispatch_request_or_notification(self.channel, event, func_info)
                 except KeyError:
                     log.error(f'No callback found for incoming callback request {event}')
@@ -476,7 +484,7 @@ class AsyncChannelProxy:
 
 
 class AsyncRequestProxy:
-    def __init__(self, msg_channel: AsyncMsgChannel, target: str, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
+    def __init__(self, msg_channel: AsyncMsgChannel, target: str, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_response=False):
         self._msg_channel = msg_channel
         self._target = target
         self._namespace = namespace
@@ -485,7 +493,7 @@ class AsyncRequestProxy:
         self._timeout = timeout
         self._msg_sent_callback = msg_sent_callback
         self._ack_callback = ack_callback
-        self._multipart_reponse = multipart_reponse
+        self._multipart_response = multipart_response
 
     def __call__(self, **kwargs):
         params = dict()
@@ -498,16 +506,16 @@ class AsyncRequestProxy:
                 callback_params[param] = RequestCallbackInfo(value)
             else:
                 params[param] = value
-        request = OutgoingRequest(self._target, namespace=self._namespace, node=self._node, params=params, callback_params=callback_params, request_type=self._request_type, acknowledge=bool(self._ack_callback))
+        request = OutgoingRequest(target=self._target, namespace=self._namespace, node=self._node, params=params, callback_params=callback_params, request_type=self._request_type, acknowledge=bool(self._ack_callback))
         channel_proxy = self._msg_channel.get_proxy()
-        if self._multipart_reponse:
+        if self._multipart_response:
             return channel_proxy.send_request_multipart_result_as_generator(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
         else:
             return channel_proxy.send_request(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
     
 
 class AsyncRequestProxyMaker:
-    def __init__(self, msg_channel: AsyncMsgChannel, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
+    def __init__(self, msg_channel: AsyncMsgChannel, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_response=False):
         self._msg_channel = msg_channel
         self._namespace = namespace
         self._node = node
@@ -515,13 +523,13 @@ class AsyncRequestProxyMaker:
         self._timeout = timeout
         self._msg_sent_callback = msg_sent_callback
         self._ack_callback = ack_callback
-        self._multipart_reponse = multipart_reponse
+        self._multipart_response = multipart_response
 
     def __getattr__(self, target):
-        return AsyncRequestProxy(self._msg_channel, target, self._namespace, self._node, self._request_type, self._timeout, self._msg_sent_callback, self._ack_callback, self._multipart_reponse)
+        return AsyncRequestProxy(self._msg_channel, target, self._namespace, self._node, self._request_type, self._timeout, self._msg_sent_callback, self._ack_callback, self._multipart_response)
     
-    def __call__(self, namespace: str=None, node: str=None, request_type: RequestType = RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_reponse=False):
-        return AsyncRequestProxyMaker(self._msg_channel, namespace, node, request_type, timeout, msg_sent_callback, ack_callback, multipart_reponse)
+    def __call__(self, namespace: str=None, node: str=None, request_type: RequestType = RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_response=False):
+        return AsyncRequestProxyMaker(self._msg_channel, namespace, node, request_type, timeout, msg_sent_callback, ack_callback, multipart_response)
 
 
 

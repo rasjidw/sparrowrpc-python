@@ -1,6 +1,5 @@
 
 import logging
-from threading import Thread
 
 from websockets.sync import client
 from websockets.sync import server

@@ -118,7 +118,7 @@ def main(use_msgpack, use_websocket):
     time.sleep(2)
 
     print('Multipart response (returns a generator)')
-    for x in channel.request(multipart_reponse=True).multipart_response(count_to=10):
+    for x in channel.request(multipart_response=True).multipart_response(count_to=10):
         print(x)
     print('Multipart response complete.')
 

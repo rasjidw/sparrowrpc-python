@@ -50,6 +50,7 @@ def multipart_response(count_to: int):
     for x in range(count_to):
         yield (x, x+1)
 
+
 @export(injectable_params=dict(channel=ThreadedMsgChannelInjector))
 def iterable_param(nums, channel):
     assert isinstance(channel, ThreadedMsgChannel)
@@ -60,16 +61,6 @@ def iterable_param(nums, channel):
         channel.request.display_chat_message(msg=msg)
         count += x
     return count
-
-
-@export(multipart_request='nums')
-def multipart_request(nums, start=0):
-    print(f'In multipart request with start of {start}')
-    sum = start
-    for x in nums:
-        print(f'Adding {x}')
-        sum += x
-    return sum
 
 
 @export

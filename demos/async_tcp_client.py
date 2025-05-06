@@ -11,7 +11,10 @@ from sparrowrpc.engines.v050 import ProtocolEngine
 
 from sparrowrpc.asyncio import AsyncDispatcher
 from sparrowrpc.asyncio.transports import AsyncTcpConnector
-from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketConnector
+try:
+    from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketConnector
+except ImportError:
+    AsyncWebsocketConnector = None
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
@@ -120,7 +123,7 @@ async def main(use_msgpack, use_websocket):
     await asyncio.sleep(2)
 
     print('Multipart response (returns a generator)')
-    proxy = channel.request(multipart_reponse=True)
+    proxy = channel.request(multipart_response=True)
     generator = proxy.multipart_response(count_to=10)
     async for x in generator:
         print(x)
