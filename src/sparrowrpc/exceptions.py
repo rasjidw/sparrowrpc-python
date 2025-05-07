@@ -21,6 +21,5 @@ class CalleeException(Exception):
     pass
 
 
-
 class ProtocolError(Exception):
     pass

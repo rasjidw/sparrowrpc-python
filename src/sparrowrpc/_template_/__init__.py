@@ -426,10 +426,10 @@ class _Template_MsgChannel(MsgChannelBase):
 class _Template_ChannelProxy:
     def __init__(self, channel: _Template_MsgChannel):
         self.channel = channel
+        self._callbacks = defaultdict(dict)   # self._callbacks[request_id][param_name] = cb_info
 
-        self._callbacks = defaultdict(dict)   # self._callback[request_id][param_name] = cb_info
-
-    async def _send_request_result_as_generator(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None, expected_response_type=ResponseType.NORMAL, callback_iterable=False):
+    async def _send_request_result_as_generator(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None,
+                                                 expected_response_type=ResponseType.NORMAL, callback_iterable=False):
         return_queue = Queue()
         async def cb_reader(event):
             await return_queue.put(event)
@@ -531,7 +531,11 @@ class _Template_ChannelProxy:
             yield result
 
     async def send_request(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None):
-        return await anext(self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.NORMAL))
+        response_pump = _Template_ResponsePump(self, msg_sent_callback, ack_callback)
+        await response_pump.send_message(message, timeout)
+        result = await response_pump.__anext__()
+        # FIXME: Check complete etc?
+        return result
                     
     async def send_request_for_iter(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None):
         return await anext(self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.NORMAL, 
@@ -567,6 +571,147 @@ class _Template_ChannelProxy:
 
         req_id = await self.channel.queue_message(message, event_callback, add_id_callback = reg_id_for_callbacks)
         return req_id
+
+
+# FIXME: Do we just always return the result and event.final??? Makes the API more consistent
+class _Template_ResponsePump():
+    def __init__(self, channel_proxy: _Template_ChannelProxy, msg_sent_callback=None, ack_callback=None, expected_response_type=ResponseType.NORMAL, 
+                 callback_iterable=False):
+        self.channel_proxy = channel_proxy
+        
+        self.msg_sent_callback = msg_sent_callback
+        self.ack_callback = ack_callback
+        self.expected_response_type = expected_response_type
+        self.callback_iterable = callback_iterable
+
+        self.return_queue = Queue()
+        self.count = 0
+        self.timeout = None
+        self.sent_notification = False
+        self.complete = False
+
+    async def _cb_reader(self, event):
+            await self.return_queue.put(event)
+
+    async def send_message(self, message: OutgoingRequest, timeout=None):
+        self.timeout = timeout
+        if isinstance(message, OutgoingNotification):
+            self.sent_notification = True
+        await self.channel_proxy.send_request_raw_async(message, self._cb_reader)
+
+    async def call_msg_sent_callback(self, event):
+        if self.msg_sent_callback:
+            #= async start
+            if asyncio.iscoroutine(self.msg_sent_callback):
+                await self.msg_sent_callback(event)
+            else:
+                self.msg_sent_callback(event)
+            #= async end
+            self.msg_sent_callback(event) #= threaded
+        else:
+            log.debug(f'Got msg sent event')
+
+    async def call_ack_callback(self, event):
+        if self.ack_callback:
+            #= async start
+            if asyncio.iscoroutine(self.ack_callback):
+                await self.ack_callback(event)
+            else:
+                self.ack_callback(event)
+            #= async end
+            self.ack_callback(event) #= threaded
+        else:
+            log.info(f'Incoming ack received, but no callback passed in')
+
+    async def process_response(self, event):
+        # check we have an expected NORMAL or MULTIPART response
+        if event.response_type != self.expected_response_type:
+            raise ValueError(f'Excpected response type {self.expected_response_type} but got {event.response_type}')
+        if event.response_type == ResponseType.NORMAL:
+            if self.callback_iterable:
+                return event.result, event.final
+            else:
+                return event.result
+            return
+        elif event.response_type == ResponseType.MULTIPART:
+            if event.final == FinalType.FINAL:
+                self.complete = True
+                return event.result
+            elif event.final == FinalType.TERMINATOR:
+                self.complete = True
+                raise StopAsyncIteration()
+            else:
+                return event.result
+            
+    async def process_incoming_req_or_notification(self, event):
+        try:
+            cb_info = self.channel_proxy._callbacks[event.callback_request_id][event.target]
+            if isinstance(cb_info, RequestCallbackInfo):
+                func_info = FuncInfo(target_name=event.target, func=cb_info.func)
+            elif isinstance(cb_info, IterableCallbackInfo):
+                async def iter_func():
+                    return await anext(cb_info.iter)
+                func_info = FuncInfo(target_name=event.target, func=iter_func, is_iterable_callback=True)
+            await _template__dispatch_request_or_notification(self.channel_proxy.channel, event, func_info)
+        except KeyError:
+            log.error(f'No callback found for incoming callback request {event}')
+
+    async def process_incoming_exception(self, event):
+        exc_info = event.exc_info
+        assert isinstance(exc_info, MtpeExceptionInfo)
+        e = None
+        if exc_info.category == MtpeExceptionCategory.CALLER:
+            for cls in CallerException.get_subclasses():
+                if exc_info.type == cls.__name__:
+                    raise cls(exc_info.msg)
+            raise CallerException(f'Type: {exc_info.type}, Msg: {exc_info.msg}')
+        elif exc_info.category == MtpeExceptionCategory.CALLEE:
+            raise CalleeException(f'Type: {exc_info.type}, Msg: {exc_info.msg}')
+
+    async def get_next_event_with_timeout(self):
+        while True:
+            #= threaded start
+            try:
+                return self.return_queue.get(timeout=1)
+            except QueueEmpty:
+                self.count += 1
+                if self.timeout and self.count > self.timeout:
+                    raise RuntimeError('TIMEOUT')  # FIXME. We should at least clean up incoming registers etc. Do we notify the callee?
+            #= threaded end
+            #= async start
+            try:
+                return await asyncio.wait_for(self.return_queue.get(), timeout=1)
+            except asyncio.TimeoutError:
+                self.count += 1
+                if self.timeout and self.count > self.timeout:
+                    raise RuntimeError('TIMEOUT')  # FIXME. We should at least clean up incoming registers etc. Do we notify the callee?
+            #= async end
+        
+    async def __anext__(self):
+        while True:
+            event = await self.get_next_event_with_timeout()
+            if isinstance(event, MessageSentEvent):
+                await self.call_msg_sent_callback(event)
+                if self.sent_notification:
+                    self.complete = True
+                    raise StopAsyncIteration
+                continue
+
+            if isinstance(event, IncomingAcknowledge):
+                await self.call_ack_callback(event)
+                continue
+
+            if isinstance(event, IncomingResponse):
+                return await self.process_response(event)
+
+            if isinstance(event, IncomingRequest) or isinstance(event, IncomingNotification):
+                await self.process_incoming_req_or_notification(event)
+                continue
+
+            if isinstance(event, IncomingException):
+                await self.process_incoming_exception(event)
+
+            log.error(f'Unhandled event {event}')
 
 
 class _Template_RequestProxy:
@@ -616,8 +761,6 @@ class _Template_RequestProxyMaker:
     
     def __call__(self, namespace: str=None, node: str=None, request_type: RequestType = RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_response=False):
         return _Template_RequestProxyMaker(self._msg_channel, namespace, node, request_type, timeout, msg_sent_callback, ack_callback, multipart_response)
-
-
 
 
 

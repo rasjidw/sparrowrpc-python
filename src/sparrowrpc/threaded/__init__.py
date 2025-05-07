@@ -355,10 +355,10 @@ class ThreadedMsgChannel(MsgChannelBase):
 class ThreadedChannelProxy:
     def __init__(self, channel: ThreadedMsgChannel):
         self.channel = channel
+        self._callbacks = defaultdict(dict)   # self._callbacks[request_id][param_name] = cb_info
 
-        self._callbacks = defaultdict(dict)   # self._callback[request_id][param_name] = cb_info
-
-    def _send_request_result_as_generator(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None, expected_response_type=ResponseType.NORMAL, callback_iterable=False):
+    def _send_request_result_as_generator(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None,
+                                                 expected_response_type=ResponseType.NORMAL, callback_iterable=False):
         return_queue = Queue()
         def cb_reader(event):
             return_queue.put(event)
@@ -437,7 +437,12 @@ class ThreadedChannelProxy:
             yield result
 
     def send_request(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None):
-        return next(self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.NORMAL))
+        response_pump = ThreadedResponsePump(self, msg_sent_callback, ack_callback)
+        response_pump.send_message(message, timeout)
+        result = response_pump.__next__()
+        # FIXME: Check complete etc?
+        return result
+        # return next(self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.NORMAL))
                     
     def send_request_for_iter(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None):
         return next(self._send_request_result_as_generator(message, timeout, msg_sent_callback, ack_callback, expected_response_type=ResponseType.NORMAL, 
@@ -465,6 +470,125 @@ class ThreadedChannelProxy:
 
         req_id = self.channel.queue_message(message, event_callback, add_id_callback = reg_id_for_callbacks)
         return req_id
+
+
+# FIXME: Do we just always return the result and event.final??? Makes the API more consistent
+class ThreadedResponsePump():
+    def __init__(self, channel_proxy: ThreadedChannelProxy, msg_sent_callback=None, ack_callback=None, expected_response_type=ResponseType.NORMAL, 
+                 callback_iterable=False):
+        self.channel_proxy = channel_proxy
+        
+        self.msg_sent_callback = msg_sent_callback
+        self.ack_callback = ack_callback
+        self.expected_response_type = expected_response_type
+        self.callback_iterable = callback_iterable
+
+        self.return_queue = Queue()
+        self.count = 0
+        self.timeout = None
+        self.sent_notification = False
+        self.complete = False
+
+    def _cb_reader(self, event):
+            self.return_queue.put(event)
+
+    def send_message(self, message: OutgoingRequest, timeout=None):
+        self.timeout = timeout
+        if isinstance(message, OutgoingNotification):
+            self.sent_notification = True
+        self.channel_proxy.send_request_raw_async(message, self._cb_reader)
+
+    def call_msg_sent_callback(self, event):
+        if self.msg_sent_callback:
+            self.msg_sent_callback(event)
+        else:
+            log.debug(f'Got msg sent event')
+
+    def call_ack_callback(self, event):
+        if self.ack_callback:
+            self.ack_callback(event)
+        else:
+            log.info(f'Incoming ack received, but no callback passed in')
+
+    def process_response(self, event):
+        # check we have an expected NORMAL or MULTIPART response
+        if event.response_type != self.expected_response_type:
+            raise ValueError(f'Excpected response type {self.expected_response_type} but got {event.response_type}')
+        if event.response_type == ResponseType.NORMAL:
+            if self.callback_iterable:
+                return event.result, event.final
+            else:
+                return event.result
+            return
+        elif event.response_type == ResponseType.MULTIPART:
+            if event.final == FinalType.FINAL:
+                self.complete = True
+                return event.result
+            elif event.final == FinalType.TERMINATOR:
+                self.complete = True
+                raise StopIteration()
+            else:
+                return event.result
+            
+    def process_incoming_req_or_notification(self, event):
+        try:
+            cb_info = self.channel_proxy._callbacks[event.callback_request_id][event.target]
+            if isinstance(cb_info, RequestCallbackInfo):
+                func_info = FuncInfo(target_name=event.target, func=cb_info.func)
+            elif isinstance(cb_info, IterableCallbackInfo):
+                def iter_func():
+                    return next(cb_info.iter)
+                func_info = FuncInfo(target_name=event.target, func=iter_func, is_iterable_callback=True)
+            threaded_dispatch_request_or_notification(self.channel_proxy.channel, event, func_info)
+        except KeyError:
+            log.error(f'No callback found for incoming callback request {event}')
+
+    def process_incoming_exception(self, event):
+        exc_info = event.exc_info
+        assert isinstance(exc_info, MtpeExceptionInfo)
+        e = None
+        if exc_info.category == MtpeExceptionCategory.CALLER:
+            for cls in CallerException.get_subclasses():
+                if exc_info.type == cls.__name__:
+                    raise cls(exc_info.msg)
+            raise CallerException(f'Type: {exc_info.type}, Msg: {exc_info.msg}')
+        elif exc_info.category == MtpeExceptionCategory.CALLEE:
+            raise CalleeException(f'Type: {exc_info.type}, Msg: {exc_info.msg}')
+
+    def get_next_event_with_timeout(self):
+        while True:
+            try:
+                return self.return_queue.get(timeout=1)
+            except QueueEmpty:
+                self.count += 1
+                if self.timeout and self.count > self.timeout:
+                    raise RuntimeError('TIMEOUT')  # FIXME. We should at least clean up incoming registers etc. Do we notify the callee?
+        
+    def __next__(self):
+        while True:
+            event = self.get_next_event_with_timeout()
+            if isinstance(event, MessageSentEvent):
+                self.call_msg_sent_callback(event)
+                if self.sent_notification:
+                    self.complete = True
+                    raise StopIteration
+                continue
+
+            if isinstance(event, IncomingAcknowledge):
+                self.call_ack_callback(event)
+                continue
+
+            if isinstance(event, IncomingResponse):
+                return self.process_response(event)
+
+            if isinstance(event, IncomingRequest) or isinstance(event, IncomingNotification):
+                self.process_incoming_req_or_notification(event)
+                continue
+
+            if isinstance(event, IncomingException):
+                self.process_incoming_exception(event)
+
+            log.error(f'Unhandled event {event}')
 
 
 class ThreadedRequestProxy:
@@ -514,8 +638,6 @@ class ThreadedRequestProxyMaker:
     
     def __call__(self, namespace: str=None, node: str=None, request_type: RequestType = RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_response=False):
         return ThreadedRequestProxyMaker(self._msg_channel, namespace, node, request_type, timeout, msg_sent_callback, ack_callback, multipart_response)
-
-
 
 
 

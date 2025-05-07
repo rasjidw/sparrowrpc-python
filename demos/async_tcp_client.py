@@ -137,7 +137,6 @@ async def main(use_msgpack, use_websocket):
         for x in [1, 10, 30, 3]:
             yield x
     param = iter_data()
-    print(dir(param))
     result = await channel.request.iterable_param(nums=param)
     print(f'Got result: {result}')
 
