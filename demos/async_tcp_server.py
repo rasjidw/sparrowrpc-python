@@ -63,16 +63,6 @@ async def iterable_param(nums, channel):
     return count
 
 
-@export(multipart_request='nums')
-async def multipart_request(nums, start=0):
-    print(f'In multipart request with start of {start}')
-    sum = start
-    for x in nums:
-        print(f'Adding {x}')
-        sum += x
-    return sum
-
-
 @export
 async def division(a, b):
     try:
