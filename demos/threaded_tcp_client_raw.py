@@ -119,7 +119,7 @@ def main(use_msgpack):
 
     print('Calling multipart_response')
     req = OutgoingRequest('multipart_response', params={'count_to': 10})
-    for x in proxy.send_request_multipart_result_as_generator(req):
+    for x in proxy.send_request_multipart_result_as_iterator(req):
         print(x)
 
     print('Sleeping 2 on the main thread')

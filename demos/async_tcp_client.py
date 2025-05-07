@@ -122,10 +122,10 @@ async def main(use_msgpack, use_websocket):
     print('Sleeping 2 on the main thread')
     await asyncio.sleep(2)
 
-    print('Multipart response (returns a generator)')
+    print('Multipart response (returns a iterator)')
     proxy = channel.request(multipart_response=True)
-    generator = proxy.multipart_response(count_to=10)
-    async for x in generator:
+    iterator = await proxy.multipart_response(count_to=10)
+    async for x in iterator:
         print(x)
     print('Multipart response complete.')
 
