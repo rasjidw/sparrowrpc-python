@@ -319,9 +319,14 @@ class ThreadedMsgChannel(MsgChannelBase):
             self._message_id += 1
             return message_id
 
-    def _send_message(self, message, message_event_callback = None):
+    def _send_message(self, message, message_event_callback = None, add_id_callback: callable = None):
         add_id, register_event_callback = self._get_add_id_and_reg_cb(message)
-        message_id = self._create_message_id() if add_id else None
+        if add_id:
+            message_id = self._create_message_id()
+            if add_id_callback:
+                add_id_callback(message_id)
+        else:
+            message_id = None
         if register_event_callback:
             self._reg_callback(message_id, message_event_callback)
 
@@ -331,8 +336,8 @@ class ThreadedMsgChannel(MsgChannelBase):
             message_event_callback(MessageSentEvent(message_id))
         return message_id
     
-    def queue_message(self, message, message_event_callback: callable):
-        return self._send_message(message, message_event_callback)
+    def queue_message(self, message, message_event_callback: callable, add_id_callback: callable = None):
+        return self._send_message(message, message_event_callback, add_id_callback)
 
     def send_shutdown_pending(self):
         # FIXME
@@ -451,13 +456,14 @@ class ThreadedChannelProxy:
 
 
     def send_request_raw_async(self, message: OutgoingRequest, event_callback):
-        req_id = self.channel.queue_message(message, event_callback)
-
-        # FIXME: Possible race condition here, as (in theory) we could get the callback before the self._callbacks dict is updated.
-        # Fix is probably to allocate the id in a separate call, rather than in queue message?
+        reg_id_for_callbacks = None
         if isinstance(message, OutgoingRequest) and message.callback_params:
-            for param_name, cb_info in message.callback_params.items():
-                self._callbacks[req_id][param_name] = cb_info
+            # avoid a possible race by registring the req_id for any callbacks prior to sending the message 
+            def reg_id_for_callbacks(req_id):
+                for param_name, cb_info in message.callback_params.items():
+                    self._callbacks[req_id][param_name] = cb_info
+
+        req_id = self.channel.queue_message(message, event_callback, add_id_callback = reg_id_for_callbacks)
         return req_id
 
 
