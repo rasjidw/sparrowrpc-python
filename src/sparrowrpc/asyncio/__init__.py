@@ -23,11 +23,6 @@ from traceback import format_exc
 from typing import Any, TYPE_CHECKING
 
 
-if sys.implementation.name == 'micropython':
-    def anext(obj):
-        return obj.__next__()
-
-
 from binarychain import BinaryChain, ChainReader
 
 
@@ -47,7 +42,11 @@ log = logging.getLogger(__name__)
 
 
 def get_thread_or_task_name():
-    return asyncio.current_task().get_name()
+    name_getter = getattr(asyncio.current_task(), 'get_name', None)
+    if name_getter:
+        return name_getter()
+    else:
+        return 'dummy'
 
 
 class AsyncTransportBase(ABC):
@@ -347,7 +346,7 @@ class AsyncMsgChannel(MsgChannelBase):
         bc = self.engine.outgoing_message_to_binary_chain(message, message_id)
         await self.transport.send_binary_chain(bc)
         if message_event_callback:
-            await message_event_callback(MessageSentEvent(message_id))
+            await message_event_callback(MessageSentEvent(request_id=message_id))
         return message_id
     
     async def queue_message(self, message, message_event_callback: callable, add_id_callback: callable = None):

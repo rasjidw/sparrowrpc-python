@@ -17,11 +17,6 @@ from traceback import format_exc
 from typing import Any, TYPE_CHECKING
 
 
-if sys.implementation.name == 'micropython':
-    def next(obj):
-        return obj.__next__()
-
-
 from binarychain import BinaryChain, ChainReader
 
 
@@ -333,7 +328,7 @@ class ThreadedMsgChannel(MsgChannelBase):
         bc = self.engine.outgoing_message_to_binary_chain(message, message_id)
         self.transport.send_binary_chain(bc)
         if message_event_callback:
-            message_event_callback(MessageSentEvent(message_id))
+            message_event_callback(MessageSentEvent(request_id=message_id))
         return message_id
     
     def queue_message(self, message, message_event_callback: callable, add_id_callback: callable = None):
