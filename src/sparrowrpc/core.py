@@ -5,7 +5,7 @@ from collections import defaultdict
 try:
     from dataclasses import dataclass
 except ImportError:
-    from udataclasses import dataclass  # micropython
+    from udataclasses import dataclass  # type: ignore (for micropython)
 import inspect
 import logging
 import sys
@@ -15,7 +15,7 @@ from typing import Any, Iterable
 try:
     from enum import StrEnum
 except ImportError:
-    from backports.strenum import StrEnum
+    from backports.strenum import StrEnum # type: ignore
 
 from binarychain import BinaryChain
 

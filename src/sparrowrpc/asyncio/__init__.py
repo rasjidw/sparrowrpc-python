@@ -13,7 +13,7 @@ from asyncio import Lock, Event
 try:
     from asyncio import Queue, QueueEmpty
 except AttributeError:
-    from uasync.queues import Queue, QueueEmpty
+    from uasync.queues import Queue, QueueEmpty # type: ignore
 
     # FIXME: add back ThreadPoolExecutor for non-micropython
     # also add @non_blocking decorator

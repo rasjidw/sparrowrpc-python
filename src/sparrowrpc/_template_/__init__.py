@@ -18,7 +18,7 @@ else: #= remove
     try: #= async <
         from asyncio import Queue, QueueEmpty #= async <
     except AttributeError:  #= async <
-        from uasync.queues import Queue, QueueEmpty  #= async <
+        from uasync.queues import Queue, QueueEmpty # type: ignore  #= async <
 
     # FIXME: add back ThreadPoolExecutor for non-micropython
     # also add @non_blocking decorator
