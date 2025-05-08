@@ -378,7 +378,7 @@ class MsgChannelBase:
                 elif message.response_type == ResponseType.MULTIPART:
                     request_completed = message.final
                 else:
-                    raise RuntimeError('Invalid response type')
+                    raise RuntimeError(f'Invalid response type of {message.response_type!r}')
             if isinstance(message, IncomingException):
                 request_completed = True
             try:

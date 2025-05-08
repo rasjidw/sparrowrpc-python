@@ -540,7 +540,7 @@ class ThreadedRequestProxy:
         for param, value in kwargs.items():
             # not just checking isinstance(value, Iterable) because we don't want lists etc
             if hasattr(value, '__iter__') and hasattr(value, '__next__'):
-                callback_params[param] = IterableCallbackInfo(func=value)
+                callback_params[param] = IterableCallbackInfo(iter=value)
             elif callable(value):
                 callback_params[param] = RequestCallbackInfo(func=value)
             else:

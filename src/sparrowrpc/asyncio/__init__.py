@@ -580,7 +580,7 @@ class AsyncRequestProxy:
         for param, value in kwargs.items():
             # not just checking isinstance(value, Iterable) because we don't want lists etc
             if hasattr(value, '__aiter__') and hasattr(value, '__anext__'):
-                callback_params[param] = IterableCallbackInfo(func=value)
+                callback_params[param] = IterableCallbackInfo(iter=value)
             elif callable(value):
                 callback_params[param] = RequestCallbackInfo(func=value)
             else:
