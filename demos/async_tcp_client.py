@@ -17,11 +17,19 @@ except ImportError:
     AsyncWebsocketConnector = None
 
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
+if sys.implementation.name == 'micropython':
+    print('**** MICROPYTHON ****')
+    logging.basicConfig()
+else:
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
 
 
 def get_thread_or_task_name():
-    return asyncio.current_task().get_name()
+    name_getter = getattr(asyncio.current_task(), 'get_name', None)
+    if name_getter:
+        return name_getter()
+    else:
+        return 'dummy'
 
 
 export = make_export_decorator()

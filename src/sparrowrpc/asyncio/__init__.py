@@ -184,14 +184,25 @@ async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRe
                 assert isinstance(cb_proxy, CallbackProxyBase)
                 cb_proxy.set_channel(msg_channel)
                 params[param_name] = cb_proxy
-        if inspect.isawaitable(func_info.func):
-            raw_result = await func_info.func(**params)
+        if sys.implementation.name == 'micropython':
+            while True:
+                last_result = func_info.func(**params)
+                try:
+                    cooked_result = await last_result
+                    last_result = cooked_result
+                    continue
+                except TypeError:
+                    break
+            result = last_result
         else:
-            raw_result = func_info.func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
-        if inspect.isawaitable(raw_result):
-            result = await raw_result
-        else:
-            result = raw_result
+            if inspect.isawaitable(func_info.func):
+                raw_result = await func_info.func(**params)
+            else:
+                raw_result = func_info.func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
+            if inspect.isawaitable(raw_result):
+                result = await raw_result
+            else:
+                result = raw_result
     for injector in injectors:
         assert isinstance(injector, AsyncInjectorBase)
         await injector.post_call_cleanup()
@@ -447,19 +458,23 @@ class AsyncResponsePump():
 
     async def call_msg_sent_callback(self, event):
         if self.msg_sent_callback:
-            if asyncio.iscoroutine(self.msg_sent_callback):
-                await self.msg_sent_callback(event)
-            else:
-                self.msg_sent_callback(event)
+            # would prefer to use asyncio.isawaitable to detect, but
+            # this is micropython compatible.
+            may_be_awaitable = self.msg_sent_callback(event)
+            try:
+                await may_be_awaitable
+            except TypeError:
+                pass
         else:
             log.debug(f'Got msg sent event')
 
     async def call_ack_callback(self, event):
         if self.ack_callback:
-            if asyncio.iscoroutine(self.ack_callback):
-                await self.ack_callback(event)
-            else:
-                self.ack_callback(event)
+            may_be_awaitable = self.ack_callback(event)
+            try:
+                await may_be_awaitable
+            except TypeError:
+                pass
         else:
             log.info(f'Incoming ack received, but no callback passed in')
 
@@ -565,9 +580,9 @@ class AsyncRequestProxy:
         for param, value in kwargs.items():
             # not just checking isinstance(value, Iterable) because we don't want lists etc
             if hasattr(value, '__aiter__') and hasattr(value, '__anext__'):
-                callback_params[param] = IterableCallbackInfo(value)
+                callback_params[param] = IterableCallbackInfo(func=value)
             elif callable(value):
-                callback_params[param] = RequestCallbackInfo(value)
+                callback_params[param] = RequestCallbackInfo(func=value)
             else:
                 params[param] = value
         request = OutgoingRequest(target=self._target, namespace=self._namespace, node=self._node, params=params, callback_params=callback_params, request_type=self._request_type, acknowledge=bool(self._ack_callback))
