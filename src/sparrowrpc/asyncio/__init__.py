@@ -80,14 +80,16 @@ class AsyncTransportBase(ABC):
                 data = await self._read_data(self.read_buf_size)
                 if data:
                     for incoming_chain in self.chain_reader.get_binary_chains(data):
-                        await self.incoming_queue.put(incoming_chain)
+                        queue_data = (incoming_chain, self.chain_reader.complete(), self.remote_closed)
+                        await self.incoming_queue.put(queue_data)
                 else:
                     break
             except Exception as e:
                 log.warning(f'Reader aborting with exception {e!s}')
                 break
         self.remote_closed = True
-        await self.incoming_queue.put(None)
+        queue_data = (None, self.chain_reader.complete(), self.remote_closed)
+        await self.incoming_queue.put(queue_data)
 
     async def _writer(self):
         while True:
@@ -112,14 +114,11 @@ class AsyncTransportBase(ABC):
         await notifier_queue.put(e)
         return False
 
-    async def get_binary_chains(self):
+    # FIXME: Do we even need this now - perhaps just read directly from the queue?
+    async def get_next_binary_chain(self):
         log.debug('Starting in get_binary_chains')
-        while True:
-            binary_chain = await self.incoming_queue.get()
-            if binary_chain is None:  # closing down
-                return
-            log.debug('Got chain from queue')
-            yield (binary_chain, self.chain_reader.complete(), self.remote_closed)
+        binary_chain, complete, remote_closed = await self.incoming_queue.get()
+        return (binary_chain, complete, remote_closed)
 
     async def send_binary_chain(self, binary_chain):
         log.debug(f'Adding binary chain to outgoing queue: {id(binary_chain)}: {repr(binary_chain)}')
@@ -132,7 +131,8 @@ class AsyncTransportBase(ABC):
             raise e
         
     async def shutdown(self):
-        await self.incoming_queue.put(None)  # end incoming queue
+        queue_data = (None, None, None)
+        await self.incoming_queue.put(queue_data)  # end incoming queue
         await self.close()
         
     @abstractmethod
@@ -309,14 +309,18 @@ class AsyncMsgChannel(MsgChannelBase):
 
     async def _incoming_msg_pump(self):
         log.debug(f'message pump started on thread {get_thread_or_task_name()}')
-        async for (bin_chain, complete, remote_closed) in self.transport.get_binary_chains():
+        while True:
+            (bin_chain, complete, remote_closed) = await self.transport.incoming_queue.get()
+            if bin_chain is None:
+                if not complete:
+                    log.warning('Got end of chains but not complete')
+                break
+            
             message, dispatch, incoming_callback = self._parse_and_allocate_bin_chain(bin_chain)
             if dispatch:
                 await self._dispatch(message)
             if incoming_callback:
                 await incoming_callback(message)
-            if remote_closed:
-                break
         log.debug(f'message pump stopped on thread {get_thread_or_task_name()}')
 
     async def _dispatch(self, message: IncomingRequest|IncomingNotification):

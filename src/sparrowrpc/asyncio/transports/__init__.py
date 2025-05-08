@@ -84,7 +84,7 @@ class AsyncHandshake:
         bc = self.hs_engine.outgoing_message_to_binary_chain(out_req, message_id)
         bc.prefix = self.BC_PREFIX
         await self.transport.send_binary_chain(bc)
-        raw_response = await self.transport.incoming_queue.get()  # should be a binary chain
+        raw_response, complete, remote_closed = await self.transport.incoming_queue.get()  # should be a binary chain
         assert isinstance(raw_response, BinaryChain)
         response = self.hs_engine.parse_incoming_message(raw_response)
         assert isinstance(response, IncomingResponse)
@@ -149,8 +149,9 @@ class AsyncHandshake:
         return self._get_sigs()
     
     async def _get_handshake_msg(self):
-        raw_bc = await self.transport.incoming_queue.get()
-        assert isinstance(raw_bc, BinaryChain)
+        raw_bc, complete, remote_closed = await self.transport.incoming_queue.get()
+        if raw_bc:
+            assert isinstance(raw_bc, BinaryChain)
         if raw_bc.prefix == self.BC_PREFIX:
             incoming_msg = self.hs_engine.parse_incoming_message(raw_bc)
             if isinstance(incoming_msg, IncomingRequest):
