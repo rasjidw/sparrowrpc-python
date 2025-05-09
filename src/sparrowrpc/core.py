@@ -15,6 +15,7 @@ from typing import Any, Iterable
 try:
     from enum import StrEnum
 except ImportError:
+    # FIXME: are we even supporting versions of Python where this is required?
     from backports.strenum import StrEnum # type: ignore
 
 from binarychain import BinaryChain

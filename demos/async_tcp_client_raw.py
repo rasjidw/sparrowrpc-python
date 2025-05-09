@@ -20,13 +20,19 @@ from sparrowrpc.core import IncomingResponse, IncomingException, OutgoingRequest
 from sparrowrpc.engines.v050 import ProtocolEngine
 
 from sparrowrpc.asyncio import AsyncDispatcher
-from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketConnector
+from sparrowrpc.asyncio.transports import AsyncTcpConnector
+
+try:
+    from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketConnector
+except ImportError:
+    AsyncWebsocketConnector = None
 
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO,
-                    format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s'               
-                    )
-
+if sys.implementation.name == 'micropython':
+    print('**** MICROPYTHON ****')
+    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+else:
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
 
 
 export = make_export_decorator()
@@ -56,7 +62,7 @@ class ResultWaiter:
         self.result = None
         self.exception = None
 
-    def process_msg(self, msg):
+    async def process_msg(self, msg):
         show_data(msg)
         if isinstance(msg, IncomingResponse):
             self.result = msg.result
@@ -84,36 +90,41 @@ async def background_counter(channel, count_to, delay):
     print(f'*** Background counter result: {result}')
 
 
-async def main(use_msgpack):
+async def test_calls(use_msgpack, use_websocket):
     if use_msgpack:
         serialiser = MsgpackSerialiser()
     else:
         serialiser = JsonSerialiser()
     engine = ProtocolEngine(serialiser)
     dispatcher = AsyncDispatcher(num_threads=5)
-    connector = AsyncWebsocketConnector(engine, dispatcher)
-    engine_sig = engine.get_engine_signature()
-    uri = f'ws://127.0.0.1:6000/{engine_sig}'
-    channel = await connector.connect(ws_uri=uri)
+    if use_websocket:
+        connector = AsyncWebsocketConnector(engine, dispatcher)
+        engine_sig = engine.get_engine_signature()
+        uri = f'ws://127.0.0.1:6000/{engine_sig}'
+        channel = await connector.connect(uri)
+    else:
+        connector = AsyncTcpConnector(engine, dispatcher)
+        channel = await connector.connect('127.0.0.1', 5000)
     await channel.start_channel()
     
-    proxy = await channel.get_proxy()
+    # start of test calls
+    proxy = channel.get_proxy()
 
-    req = OutgoingRequest('ping', namespace='#sys')
+    req = OutgoingRequest(target='ping', namespace='#sys')
     result = await proxy.send_request(req)
     print(f'Got result: {result}')
 
-    req = OutgoingRequest('hello_world')
+    req = OutgoingRequest(target='hello_world')
     req.acknowledge = True
     result = await proxy.send_request(req, msg_sent_callback=show_data, ack_callback=show_data)
     print(f'Got result: {result}')
 
     name = 'Fred'
-    req = OutgoingRequest('hello_world', params={'name': name})
+    req = OutgoingRequest(target='hello_world', params={'name': name})
     result = await proxy.send_request(req)
     print(f'Got result: {result}')
 
-    req = OutgoingRequest('slow_counter', params={'count_to': 5}, callback_params={'progress': RequestCallbackInfo(show_progress)})
+    req = OutgoingRequest(target='slow_counter', params={'count_to': 5}, callback_params={'progress': RequestCallbackInfo(func=show_progress)})
     result = await proxy.send_request(req)
     print(f'Got result: {result}')
 
@@ -164,13 +175,19 @@ async def main(use_msgpack):
     print('Done')
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--msgpack', action='store_true')
+    parser.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
     root_logger = logging.getLogger()
     if args.debug:
-        root_logger.setLevel(logging.DEBUG)
-    asyncio.run(main(args.msgpack))
+        root_logger.setLevel(logging.DEBUG)  # does not seem to have an effect in MicroPython
+
+    asyncio.run(test_calls(args.msgpack, args.websocket))
+
+
+if __name__ == '__main__':
+    main()

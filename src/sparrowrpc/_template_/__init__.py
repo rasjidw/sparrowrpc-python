@@ -386,6 +386,7 @@ class _Template_MsgChannel(MsgChannelBase):
                 break
             
             message, dispatch, incoming_callback = self._parse_and_allocate_bin_chain(bin_chain)
+            log.debug(f'** Incoming message: {message}, Dispatch: {dispatch}, Callback: {incoming_callback}')
             if dispatch:
                 await self._dispatch(message)
             if incoming_callback:
