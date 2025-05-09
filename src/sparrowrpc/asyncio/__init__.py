@@ -193,17 +193,14 @@ async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRe
                 params[param_name] = cb_proxy
         if sys.implementation.name == 'micropython':
             last_result = func(**params)
-            print(last_result)
             while True:
                 try:
                     cooked_result = await last_result
                     last_result = cooked_result
-                    print(last_result)
                     continue
                 except TypeError:
                     break
             result = last_result
-            print(result)
         else:
             if inspect.isawaitable(func):
                 raw_result = await func(**params)
