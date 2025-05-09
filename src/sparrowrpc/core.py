@@ -218,7 +218,7 @@ class FuncInfo:
     auth_groups: list[str] = None  # FIXME: maybe something more general, like tags.
     multipart_response: bool = False
     func: callable = None
-    is_iterable_callback: bool = False   # currently only used for iterable callbacks - not sure if it makes sense elsewhere
+    iterable_callback: Iterable = None   # only one of func or iterable_callback should be set
     injectable_params: dict = None       # param name to callable that returns the injected param.
 
 

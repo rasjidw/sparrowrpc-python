@@ -2,15 +2,9 @@
 
 import argparse
 import asyncio
-from collections import namedtuple
 import logging
 import sys
 import time
-try:
-    from threading import current_thread
-except ImportError:
-    # micropython
-    current_thread = lambda: namedtuple('cr', ['name'], defaults=['dummy'])
 
 
 from sparrowrpc.core import make_export_decorator
@@ -30,9 +24,17 @@ except ImportError:
 
 if sys.implementation.name == 'micropython':
     print('**** MICROPYTHON ****')
-    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 else:
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
+
+
+def get_thread_or_task_name():
+    name_getter = getattr(asyncio.current_task(), 'get_name', None)
+    if name_getter:
+        return name_getter()
+    else:
+        return 'dummy'
 
 
 export = make_export_decorator()
@@ -46,9 +48,9 @@ async def display_chat_message(msg):
 
 
 async def show_progress(message):
-    print(f'Running callback in {current_thread().name}')
+    print('--- Progress Msg ---')
     print(message)
-    print('--------------')
+    print('--------------------')
 
 
 async def show_data(data):
@@ -82,9 +84,9 @@ class ResultWaiter:
 
 
 async def background_counter(channel, count_to, delay):
-    cb = lambda message: print(f'*** Got msg: {message}. Displaying in thread {current_thread().name}')
+    cb = lambda message: print(f'*** Got msg: {message}. Displaying in thread {get_thread_or_task_name()}')
     proxy = await channel.get_proxy()
-    print(f'*** Calling slow counter in background thread {current_thread().name}')
+    print(f'*** Calling slow counter in background thread {get_thread_or_task_name()}')
     req = OutgoingRequest('slow_counter', params=dict(count_to=count_to, delay=delay), callback_params={'progress': RequestCallbackInfo(cb)})
     result = await proxy.send_request(req)
     print(f'*** Background counter result: {result}')

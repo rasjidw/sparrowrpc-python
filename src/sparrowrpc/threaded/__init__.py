@@ -141,6 +141,7 @@ class ThreadedDispatcherBase(ABC):
 
 
 def threaded_call_func(msg_channel: ThreadedMsgChannel, incoming_msg: IncomingRequest|IncomingNotification, func_info: FuncInfo):
+    log.debug(f'In threaded_call_func with {incoming_msg} and {func_info}')
     params = dict()
     injectors = list()
     if func_info.injectable_params:
@@ -151,8 +152,14 @@ def threaded_call_func(msg_channel: ThreadedMsgChannel, incoming_msg: IncomingRe
             injector.pre_call_setup()
             params[param_name] = injector.get_param()
 
+    if func_info.func:
+        func = func_info.func
+    else:
+        log.debug('Calling Iterable __next__')
+        func = func_info.iterable_callback.__next__
+
     if incoming_msg.raw_binary:
-        result = func_info.func(incoming_msg.data, **params)
+        result = func(incoming_msg.data, **params)
     else:
         # normal non-binary request
         if incoming_msg.params:
@@ -175,7 +182,7 @@ def threaded_call_func(msg_channel: ThreadedMsgChannel, incoming_msg: IncomingRe
                 assert isinstance(cb_proxy, CallbackProxyBase)
                 cb_proxy.set_channel(msg_channel)
                 params[param_name] = cb_proxy
-        result = func_info.func(**params)
+        result = func(**params)
     for injector in injectors:
         assert isinstance(injector, ThreadedInjectorBase)
         injector.post_call_cleanup()
@@ -197,7 +204,7 @@ def threaded_run_request_wait_to_complete(msg_channel: ThreadedMsgChannel, reque
             outgoing_msg = OutgoingResponse(request_id=request.id, result=result)
             msg_channel._send_message(outgoing_msg)
     except Exception as e:
-        if func_info.is_iterable_callback and isinstance(e, StopIteration):
+        if func_info.iterable_callback and isinstance(e, StopIteration):
             outgoing_msg = OutgoingResponse(request_id=request.id, result=None, final=FinalType.TERMINATOR)
         else:
             log.debug(format_exc())
@@ -419,7 +426,7 @@ class ThreadedResponsePump():
         self.complete = False
 
     def _cb_reader(self, event):
-            self.return_queue.put(event)
+        self.return_queue.put(event)
 
     def send_message(self, message: OutgoingRequest, timeout=None):
         self.timeout = timeout
@@ -465,9 +472,10 @@ class ThreadedResponsePump():
             if isinstance(cb_info, RequestCallbackInfo):
                 func_info = FuncInfo(target_name=event.target, func=cb_info.func)
             elif isinstance(cb_info, IterableCallbackInfo):
-                def iter_func():
-                    return next(cb_info.iter)
-                func_info = FuncInfo(target_name=event.target, func=iter_func, is_iterable_callback=True)
+                func_info = FuncInfo(target_name=event.target, iterable_callback=cb_info.iter)
+            else:
+                log.error(f'Invalid cb_info type of {type(cb_info)}')
+            log.debug(f'Calling dispatch with {func_info}')
             threaded_dispatch_request_or_notification(self.channel_proxy.channel, event, func_info)
         except KeyError:
             log.error(f'No callback found for incoming callback request {event}')
@@ -499,6 +507,7 @@ class ThreadedResponsePump():
     def __next__(self):
         while True:
             event = self.get_next_event_with_timeout()
+            log.debug(f'Got event in __next__: {event}')
             if isinstance(event, MessageSentEvent):
                 self.call_msg_sent_callback(event)
                 if self.sent_notification:

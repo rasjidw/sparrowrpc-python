@@ -168,6 +168,7 @@ class _Template_DispatcherBase(ABC):
 
 
 async def _template__call_func(msg_channel: _Template_MsgChannel, incoming_msg: IncomingRequest|IncomingNotification, func_info: FuncInfo):
+    log.debug(f'In _template__call_func with {incoming_msg} and {func_info}')
     params = dict()
     injectors = list()
     if func_info.injectable_params:
@@ -178,8 +179,14 @@ async def _template__call_func(msg_channel: _Template_MsgChannel, incoming_msg: 
             await injector.pre_call_setup()
             params[param_name] = await injector.get_param()
 
+    if func_info.func:
+        func = func_info.func
+    else:
+        log.debug('Calling Iterable __anext__')
+        func = func_info.iterable_callback.__anext__
+
     if incoming_msg.raw_binary:
-        result = func_info.func(incoming_msg.data, **params)
+        result = func(incoming_msg.data, **params)
     else:
         # normal non-binary request
         if incoming_msg.params:
@@ -203,12 +210,12 @@ async def _template__call_func(msg_channel: _Template_MsgChannel, incoming_msg: 
                 cb_proxy.set_channel(msg_channel)
                 params[param_name] = cb_proxy
         #= threaded start
-        result = func_info.func(**params)
+        result = func(**params)
         #= threaded end
         #= async start
         if sys.implementation.name == 'micropython':
+            last_result = func(**params)
             while True:
-                last_result = func_info.func(**params)
                 try:
                     cooked_result = await last_result
                     last_result = cooked_result
@@ -217,10 +224,10 @@ async def _template__call_func(msg_channel: _Template_MsgChannel, incoming_msg: 
                     break
             result = last_result
         else:
-            if inspect.isawaitable(func_info.func):
-                raw_result = await func_info.func(**params)
+            if inspect.isawaitable(func):
+                raw_result = await func(**params)
             else:
-                raw_result = func_info.func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
+                raw_result = func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
             if inspect.isawaitable(raw_result):
                 result = await raw_result
             else:
@@ -247,7 +254,7 @@ async def _template__run_request_wait_to_complete(msg_channel: _Template_MsgChan
             outgoing_msg = OutgoingResponse(request_id=request.id, result=result)
             await msg_channel._send_message(outgoing_msg)
     except Exception as e:
-        if func_info.is_iterable_callback and isinstance(e, StopAsyncIteration):
+        if func_info.iterable_callback and isinstance(e, StopAsyncIteration):
             outgoing_msg = OutgoingResponse(request_id=request.id, result=None, final=FinalType.TERMINATOR)
         else:
             log.debug(format_exc())
@@ -514,7 +521,7 @@ class _Template_ResponsePump():
         self.complete = False
 
     async def _cb_reader(self, event):
-            await self.return_queue.put(event)
+        await self.return_queue.put(event)
 
     async def send_message(self, message: OutgoingRequest, timeout=None):
         self.timeout = timeout
@@ -576,9 +583,10 @@ class _Template_ResponsePump():
             if isinstance(cb_info, RequestCallbackInfo):
                 func_info = FuncInfo(target_name=event.target, func=cb_info.func)
             elif isinstance(cb_info, IterableCallbackInfo):
-                async def iter_func():
-                    return await anext(cb_info.iter)
-                func_info = FuncInfo(target_name=event.target, func=iter_func, is_iterable_callback=True)
+                func_info = FuncInfo(target_name=event.target, iterable_callback=cb_info.iter)
+            else:
+                log.error(f'Invalid cb_info type of {type(cb_info)}')
+            log.debug(f'Calling dispatch with {func_info}')
             await _template__dispatch_request_or_notification(self.channel_proxy.channel, event, func_info)
         except KeyError:
             log.error(f'No callback found for incoming callback request {event}')
@@ -620,6 +628,7 @@ class _Template_ResponsePump():
     async def __anext__(self):
         while True:
             event = await self.get_next_event_with_timeout()
+            log.debug(f'Got event in __anext__: {event}')
             if isinstance(event, MessageSentEvent):
                 await self.call_msg_sent_callback(event)
                 if self.sent_notification:
