@@ -24,7 +24,7 @@ else: #= remove
     # also add @non_blocking decorator
     #from concurrent.futures import ThreadPoolExecutor #= async <
     from typing import AsyncIterable as Iterable  #= async <
-from traceback import format_exc
+from traceback import format_exc, print_exc
 from typing import Any, TYPE_CHECKING
 
 
@@ -66,14 +66,12 @@ def is_awaitable(may_be_awaitable):
 
 async def unwrap_result(raw_result):
     # FIXME: We may not need this once we have the @nonblocking dectorator
-    print(f'** Raw result: {raw_result!r}')
     unwraped_result = raw_result
     while True:
         if is_awaitable(unwraped_result):
             unwraped_result = await unwraped_result
         else:
             break
-    print(f'** Got result: {unwrap_result!r}')
     return unwraped_result
 
 
@@ -187,6 +185,7 @@ class _Template_DispatcherBase(ABC):
         raise NotImplementedError()
 
 
+# FIXME: Turn this into a class
 async def _template__call_func(msg_channel: _Template_MsgChannel, incoming_msg: IncomingRequest|IncomingNotification, func_info: FuncInfo):
     log.debug(f'In _template__call_func with {incoming_msg} and {func_info}')
     params = dict()
@@ -229,13 +228,24 @@ async def _template__call_func(msg_channel: _Template_MsgChannel, incoming_msg: 
                 assert isinstance(cb_proxy, CallbackProxyBase)
                 cb_proxy.set_channel(msg_channel)
                 params[param_name] = cb_proxy
-        #= threaded start
-        result = func(**params)
-        #= threaded end
-        #= async start
-        raw_result = func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
-        result = await unwrap_result(raw_result)
-        #= async end
+        try:
+            #= threaded start
+            result = func(**params)
+            #= threaded end
+            #= async start
+            raw_result = func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
+            result = await unwrap_result(raw_result)
+            #= async end
+        except StopAsyncIteration:
+            # pass this up, but don't log as this is normal for stopping multipart requests
+            raise 
+        except Exception as e:
+            log.warning('-' * 20)
+            log.warning(format_exc())
+            log.warning('-' * 20)
+            raise
+
+    # FIXME: Currently the post_call_cleanup is missed if there is an exception
     for injector in injectors:
         assert isinstance(injector, _Template_InjectorBase)
         await injector.post_call_cleanup()
@@ -744,7 +754,7 @@ class _Template_CallbackProxy(CallbackProxyBase):
             await proxy.send_notification(outgoing_msg)
 
 
-class _Template_IterableCallbackProxy(Iterable, CallbackProxyBase):
+class _Template_IterableCallbackProxy(CallbackProxyBase):
     def __init__(self, cb_param_name, callback_request_id, cb_info):
         CallbackProxyBase.__init__(self, cb_param_name, callback_request_id, cb_info)
         self._final = False

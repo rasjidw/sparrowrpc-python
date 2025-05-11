@@ -290,7 +290,7 @@ class _Template_TcpListener:
     async def _async_client_connected(self, async_reader: asyncio.StreamReader, async_writer: asyncio.StreamWriter):
         # FIXME: work out what the peername format is in micropython
         remote_address = repr(async_writer.get_extra_info('peername'))
-        print(f'REMOTE ADDRESS: {remote_address}')
+        log.info(f'REMOTE ADDRESS: {remote_address}')
         transport = _Template_TcpAsyncTransport(async_reader, async_writer)
         channel_task = asyncio.create_task(self._start_channel(transport, remote_address))
         self.channel_tasks[remote_address] = channel_task

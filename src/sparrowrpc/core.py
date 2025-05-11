@@ -218,6 +218,7 @@ class FuncInfo:
     auth_groups: list[str] = None  # FIXME: maybe something more general, like tags.
     multipart_response: bool = False
     func: callable = None
+    non_blocking: bool = False  # set to true for non-async functions that are exported but can be used directly in async code as they don't block
     iterable_callback: Iterable = None   # only one of func or iterable_callback should be set
     injectable_params: dict = None       # param name to callable that returns the injected param.
 
@@ -226,7 +227,7 @@ class FunctionRegister:
     def __init__(self, namespace: str = None):
         self.namespace = namespace if namespace else ''
         self._register = dict()   # dict[namespace][target_name] -> FuncInfo
-    def register_func(self, func, target_name=None, namespace=None, auth_groups=None, multipart_response=False, injectable_params=None):
+    def register_func(self, func, target_name=None, namespace=None, auth_groups=None, multipart_response=False, injectable_params=None, non_blocking=False):
         namespace = '' if namespace is None else namespace
         if not isinstance(namespace, str):
             raise TypeError('namespace must be a string')
@@ -245,7 +246,7 @@ class FunctionRegister:
         if namespace not in self._register:
             self._register[namespace] = dict()
         func_info = FuncInfo(target_name=target_name, namespace=namespace, auth_groups=auth_groups, multipart_response=multipart_response, func=func,
-                             injectable_params=injectable_params)
+                             injectable_params=injectable_params, non_blocking=non_blocking)
         if target_name in self._register[namespace]:
             raise ValueError(f'duplicate registration of {target_name} into "{namespace}" namespace')
         self._register[namespace][target_name] = func_info
@@ -419,9 +420,9 @@ class ExportDecorator:
         self.register = func_register if func_register else default_func_register
         assert isinstance(self.register, FunctionRegister)
 
-    def __call__(self, _func=None, target_name=None, namespace=None, auth_groups=None, multipart_response=False, injectable_params=None):
+    def __call__(self, _func=None, target_name=None, namespace=None, auth_groups=None, multipart_response=False, injectable_params=None, non_blocking=False):
         def decorate(func):
-            self.register.register_func(func, target_name, namespace, auth_groups, multipart_response, injectable_params=injectable_params)
+            self.register.register_func(func, target_name, namespace, auth_groups, multipart_response, injectable_params=injectable_params, non_blocking=non_blocking)
             return func
         if _func and callable(_func):
             return decorate(_func)

@@ -22,7 +22,7 @@ class Waiter:
     def wake_up(self):
         current_task = asyncio.current_task()
         if not current_task:
-            raise RuntimeError('Must be called within as task')
+            raise RuntimeError('Must be called within a task')
         self.event.set()
 
     def is_awake(self):
@@ -129,12 +129,15 @@ class Queue:
         Put an item into the queue. If the queue is full, wait until a free
         slot is available before adding item.
         """
+        print(f'>>> In Queue {id(self)}: Putting item: {item!r}')
         while self.full():
+            print(f'>>> In Queue {id(self)}: Queue is full. Wating....')
             waiter = Waiter()
             putter = asyncio.create_task(waiter.wait())
             self._putters.append((putter, waiter))
             try:
                 await putter
+                print(f'>>> In Queue {id(self)}: Awake now ....')
             except:
                 putter.cancel()  # Just in case putter is not done yet.
                 try:
@@ -157,11 +160,13 @@ class Queue:
         If no free slot is immediately available, raise QueueFull.
         """
         if self.full():
+            print(f'>>> In Queue {id(self)}: Queue FULL')
             raise QueueFull
         self._put(item)
         self._unfinished_tasks += 1
         self._finished.clear()
         self._wakeup_next(self._getters)
+        print(f'>>> In Queue {id(self)}: Put No Wait success with {item}')
 
     async def get(self):
         """Remove and return an item from the queue.

@@ -21,8 +21,10 @@ except ImportError:
 if sys.implementation.name == 'micropython':
     print('**** MICROPYTHON ****')
     logging.basicConfig(level=logging.DEBUG)
+    micropython = True
 else:
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
+    micropython = False
 
 
 def get_thread_or_task_name():
@@ -57,13 +59,35 @@ async def slow_counter(count_to: int, delay: int = 0.5, progress: AsyncCallbackP
     return f'Counted to {result} with a delay of {delay} between counts. All done.'
 
 
-@export(multipart_response=True)
-async def multipart_response(count_to: int):
-    for x in range(count_to):
-        yield (x, x+1)
+if micropython:
+    # NOTE: MicroPython does not currently (May 2025) support async yield syntax, so have to return an async iterator 
+    class AsyncCounter:
+        def __init__(self, count_to):
+            self.count_to = count_to
+            self.current_count = 0
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            if self.current_count >= self.count_to:
+                raise StopAsyncIteration()
+            result = (self.current_count, self.current_count + 1)
+            self.current_count += 1
+            return result
+
+    @export(multipart_response=True)
+    async def multipart_response(count_to: int):
+        return AsyncCounter(count_to)
+
+else:
+    @export(multipart_response=True)
+    async def multipart_response(count_to: int):
+        for x in range(count_to):
+            yield (x, x+1)
+
 
 @export(injectable_params=dict(channel=AsyncMsgChannelInjector))
 async def iterable_param(nums, channel):
+    print('************* In iterable_param *************')
     print(type(channel))
     assert isinstance(channel, AsyncMsgChannel)
     count = 0

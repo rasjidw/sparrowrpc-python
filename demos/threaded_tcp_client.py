@@ -70,7 +70,7 @@ def background_counter(channel, count_to, delay):
     cb = lambda message: print(f'*** Got msg: {message}. Displaying in thread {threading.current_thread().name}')
     result = channel.request.slow_counter(count_to=count_to, delay=delay, progress=cb)
 
-    print(f'*** Background counter result: {result}')
+    print(f'*** Background slow counter result: {result}')
 
 
 def main(use_msgpack, use_websocket):
@@ -105,17 +105,19 @@ def main(use_msgpack, use_websocket):
     print('Requesting send and ack callbacks...')
     ack_requester = channel.request(msg_sent_callback=show_data, ack_callback=show_data)
     result = ack_requester.hello_world()
-    print(f'Got result: {result}')
+    print(f'Got hello world result: {result}')
 
     print('Calling slow counter...')
     result = channel.request.slow_counter(count_to=5, progress=show_progress)
-    print(f'Got result: {result}')
+    print(f'Got slow counter result: {result}')
+
+    print('----------------------')
 
     background_thread = threading.Thread(target=background_counter, args=(channel, 5, 1))
     background_thread.start()
 
-    print('Sleeping 2 on the main thread')
-    time.sleep(2)
+    print('Sleeping 8 on the main thread')
+    time.sleep(8)
 
     print('Multipart response (returns a generator)')
     for x in channel.request(multipart_response=True).multipart_response(count_to=10):

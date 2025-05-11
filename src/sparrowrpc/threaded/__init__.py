@@ -13,7 +13,7 @@ from typing import Iterable
 
     # FIXME: add back ThreadPoolExecutor for non-micropython
     # also add @non_blocking decorator
-from traceback import format_exc
+from traceback import format_exc, print_exc
 from typing import Any, TYPE_CHECKING
 
 
@@ -48,14 +48,12 @@ def is_awaitable(may_be_awaitable):
 
 def unwrap_result(raw_result):
     # FIXME: We may not need this once we have the @nonblocking dectorator
-    print(f'** Raw result: {raw_result!r}')
     unwraped_result = raw_result
     while True:
         if is_awaitable(unwraped_result):
             unwraped_result = unwraped_result
         else:
             break
-    print(f'** Got result: {unwrap_result!r}')
     return unwraped_result
 
 
@@ -160,6 +158,7 @@ class ThreadedDispatcherBase(ABC):
         raise NotImplementedError()
 
 
+# FIXME: Turn this into a class
 def threaded_call_func(msg_channel: ThreadedMsgChannel, incoming_msg: IncomingRequest|IncomingNotification, func_info: FuncInfo):
     log.debug(f'In threaded_call_func with {incoming_msg} and {func_info}')
     params = dict()
@@ -202,7 +201,18 @@ def threaded_call_func(msg_channel: ThreadedMsgChannel, incoming_msg: IncomingRe
                 assert isinstance(cb_proxy, CallbackProxyBase)
                 cb_proxy.set_channel(msg_channel)
                 params[param_name] = cb_proxy
-        result = func(**params)
+        try:
+            result = func(**params)
+        except StopIteration:
+            # pass this up, but don't log as this is normal for stopping multipart requests
+            raise 
+        except Exception as e:
+            log.warning('-' * 20)
+            log.warning(format_exc())
+            log.warning('-' * 20)
+            raise
+
+    # FIXME: Currently the post_call_cleanup is missed if there is an exception
     for injector in injectors:
         assert isinstance(injector, ThreadedInjectorBase)
         injector.post_call_cleanup()
@@ -639,7 +649,7 @@ class ThreadedCallbackProxy(CallbackProxyBase):
             proxy.send_notification(outgoing_msg)
 
 
-class ThreadedIterableCallbackProxy(Iterable, CallbackProxyBase):
+class ThreadedIterableCallbackProxy(CallbackProxyBase):
     def __init__(self, cb_param_name, callback_request_id, cb_info):
         CallbackProxyBase.__init__(self, cb_param_name, callback_request_id, cb_info)
         self._final = False
