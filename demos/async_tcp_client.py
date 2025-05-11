@@ -19,9 +19,11 @@ except ImportError:
 
 if sys.implementation.name == 'micropython':
     print('**** MICROPYTHON ****')
-    logging.basicConfig()
+    logging.basicConfig(level=logging.INFO)
+    micropython = True
 else:
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
+    micropython = False
 
 
 def get_thread_or_task_name():
@@ -87,6 +89,24 @@ async def background_counter(channel, count_to, delay):
     print(f'*** Background counter result: {result}')
 
 
+# For Micropython
+class AsyncData:
+    def __init__(self, iter_data):
+        self.iter_data = iter_data
+        self.index = 0
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            result = self.iter_data[self.index]
+            self.index += 1
+            return result
+        except IndexError:
+            raise StopAsyncIteration()
+
+
 async def main(use_msgpack, use_websocket):
     if use_msgpack:
         serialiser = MsgpackSerialiser()
@@ -119,16 +139,16 @@ async def main(use_msgpack, use_websocket):
     print('Requesting send and ack callbacks...')
     ack_requester = channel.request(msg_sent_callback=show_data, ack_callback=show_data)
     result = await ack_requester.hello_world()
-    print(f'Got result: {result}')
+    print(f'Got hello world result: {result}')
 
     print('Calling slow counter...')
     result = await channel.request.slow_counter(count_to=5, progress=show_progress)
-    print(f'Got result: {result}')
+    print(f'Got slow counter result: {result}')
 
     background_task = asyncio.create_task(background_counter(channel, 5, 1))
 
-    print('Sleeping 2 on the main thread')
-    await asyncio.sleep(2)
+    print('Sleeping 10 on the main thread')
+    await asyncio.sleep(10)
 
     print('Multipart response (returns a iterator)')
     proxy = channel.request(multipart_response=True)
@@ -141,12 +161,19 @@ async def main(use_msgpack, use_websocket):
     await asyncio.sleep(2)
 
     print('Iterable param (IterableCallback) - Pull')
-    async def iter_data():
-        for x in [1, 10, 30, 3]:
-            yield x
-    param = iter_data()
-    result = await channel.request.iterable_param(nums=param)
-    print(f'Got result: {result}')
+    data = [1, 10, 30, 3]
+    if micropython:
+        # NOTE: MicroPython does not currently (May 2025) support async yield syntax, so have to return an async iterator 
+        counter = AsyncData(data)
+        result = await channel.request.iterable_param(nums=counter)
+        print(f'Got iterable param result: {result}')
+    else:
+        async def iter_data():
+            for x in data:
+                yield x
+        param = iter_data()
+        result = await channel.request.iterable_param(nums=param)
+        print(f'Got iterable param result: {result}')
 
     print('Sleeping 2 on the main thread')
     await asyncio.sleep(2)
