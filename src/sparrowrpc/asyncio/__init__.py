@@ -49,6 +49,26 @@ def get_thread_or_task_name():
         return 'dummy'
 
 
+def is_awaitable(may_be_awaitable):
+    if sys.implementation.name == 'micropython':
+        return type(may_be_awaitable).__name__ == 'generator'
+    else:
+        return inspect.isawaitable(may_be_awaitable)
+
+
+async def unwrap_result(raw_result):
+    # FIXME: We may not need this once we have the @nonblocking dectorator
+    print(f'** Raw result: {raw_result!r}')
+    unwraped_result = raw_result
+    while True:
+        if is_awaitable(unwraped_result):
+            unwraped_result = await unwraped_result
+        else:
+            break
+    print(f'** Got result: {unwrap_result!r}')
+    return unwraped_result
+
+
 class AsyncTransportBase(ABC):
     def __init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size=8192):
         self.max_msg_size = max_msg_size
@@ -191,25 +211,8 @@ async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRe
                 assert isinstance(cb_proxy, CallbackProxyBase)
                 cb_proxy.set_channel(msg_channel)
                 params[param_name] = cb_proxy
-        if sys.implementation.name == 'micropython':
-            last_result = func(**params)
-            while True:
-                try:
-                    cooked_result = await last_result
-                    last_result = cooked_result
-                    continue
-                except TypeError:
-                    break
-            result = last_result
-        else:
-            if inspect.isawaitable(func):
-                raw_result = await func(**params)
-            else:
-                raw_result = func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
-            if inspect.isawaitable(raw_result):
-                result = await raw_result
-            else:
-                result = raw_result
+        raw_result = func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
+        result = await unwrap_result(raw_result)
     for injector in injectors:
         assert isinstance(injector, AsyncInjectorBase)
         await injector.post_call_cleanup()
@@ -287,7 +290,8 @@ class AsyncDispatcher(AsyncDispatcherBase):
                 continue
             task = asyncio.create_task(async_dispatch_request_or_notification(msg_channel, incoming_msg, func_info))
             self.tasks.add(task)
-            task.add_done_callback(self.tasks.discard)
+            if sys.implementation.name != 'micropython':
+                task.add_done_callback(self.tasks.discard)
             # asyncio.ensure_future(task)
 
     async def dispatch_incoming(self, msg_channel: AsyncMsgChannel, request: RequestBase, func_info: FuncInfo):
@@ -345,7 +349,7 @@ class AsyncMsgChannel(MsgChannelBase):
     async def _dispatch(self, message: IncomingRequest|IncomingNotification):
         func_info, ack_err_msg = self._get_func_info_and_ack_err_msg(message)
         if ack_err_msg:
-            await self._send_message(OutgoingAcknowledge(message.id))
+            await self._send_message(OutgoingAcknowledge(request_id=message.id))
         if func_info:
             await self.dispatcher.dispatch_incoming(self, message, func_info)
 

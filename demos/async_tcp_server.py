@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import logging
 import sys
-from threading import current_thread
 
 from sparrowrpc.core import make_export_decorator
 from sparrowrpc.engines.v050 import ProtocolEngine
@@ -13,12 +12,25 @@ from sparrowrpc.exceptions import InvalidParams
 
 from sparrowrpc.asyncio import AsyncDispatcher, AsyncMsgChannel, AsyncMsgChannelInjector, AsyncCallbackProxy
 from sparrowrpc.asyncio.transports import AsyncTcpListener
-from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketListener
+try:
+    from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketListener
+except ImportError:
+    AsyncWebsocketListener = None
 
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
-                    format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s'
-                    )
+if sys.implementation.name == 'micropython':
+    print('**** MICROPYTHON ****')
+    logging.basicConfig(level=logging.DEBUG)
+else:
+    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
+
+
+def get_thread_or_task_name():
+    name_getter = getattr(asyncio.current_task(), 'get_name', None)
+    if name_getter:
+        return name_getter()
+    else:
+        return 'dummy'
 
 
 export = make_export_decorator()
@@ -37,7 +49,7 @@ async def slow_counter(count_to: int, delay: int = 0.5, progress: AsyncCallbackP
     if progress:
         progress.set_to_notification()
     for x in range(count_to):
-        msg = f'Counted to {x} in thread - {current_thread().name}'
+        msg = f'Counted to {x} in thread - {get_thread_or_task_name()}'
         if progress:
             await progress(message=msg)
         await asyncio.sleep(delay)

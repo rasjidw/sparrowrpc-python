@@ -39,6 +39,26 @@ def get_thread_or_task_name():
     return current_thread().name
 
 
+def is_awaitable(may_be_awaitable):
+    if sys.implementation.name == 'micropython':
+        return type(may_be_awaitable).__name__ == 'generator'
+    else:
+        return inspect.isawaitable(may_be_awaitable)
+
+
+def unwrap_result(raw_result):
+    # FIXME: We may not need this once we have the @nonblocking dectorator
+    print(f'** Raw result: {raw_result!r}')
+    unwraped_result = raw_result
+    while True:
+        if is_awaitable(unwraped_result):
+            unwraped_result = unwraped_result
+        else:
+            break
+    print(f'** Got result: {unwrap_result!r}')
+    return unwraped_result
+
+
 class ThreadedTransportBase(ABC):
     def __init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size=8192):
         self.max_msg_size = max_msg_size
@@ -317,7 +337,7 @@ class ThreadedMsgChannel(MsgChannelBase):
     def _dispatch(self, message: IncomingRequest|IncomingNotification):
         func_info, ack_err_msg = self._get_func_info_and_ack_err_msg(message)
         if ack_err_msg:
-            self._send_message(OutgoingAcknowledge(message.id))
+            self._send_message(OutgoingAcknowledge(request_id=message.id))
         if func_info:
             self.dispatcher.dispatch_incoming(self, message, func_info)
 

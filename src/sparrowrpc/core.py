@@ -351,7 +351,7 @@ class MsgChannelBase:
                     if message.id is None:
                         log.error(f'Incoming request without an id')
                     else:
-                        ack_err_msg = OutgoingAcknowledge(message.id)
+                        ack_err_msg = OutgoingAcknowledge(request_id=message.id)
         else:
             if isinstance(message, IncomingRequest):
                 exc_info = MtpeExceptionInfo(MtpeExceptionCategory.CALLER, type='TargetNotFound', msg=f'target {message.target} not found')
