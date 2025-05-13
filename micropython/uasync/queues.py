@@ -18,18 +18,23 @@ class QueueFull(Exception):
 class Waiter:
     def __init__(self):
         self.event = asyncio.Event()
+        self.waiting_task = asyncio.current_task()
+        if not self.waiting_task:
+            raise RuntimeError('Must be called within a task')
 
     def wake_up(self):
-        current_task = asyncio.current_task()
-        if not current_task:
-            raise RuntimeError('Must be called within a task')
         self.event.set()
 
     def is_awake(self):
         return self.event.is_set()
-
-    async def wait(self):
+    
+    def is_alive(self):
+        return self.waiting_task.done() == False
+    
+    async def wait_till_awake(self):
         await self.event.wait()
+        if not self.is_alive():
+            raise ValueError('Waiting task is done or cancelled')
 
 
 class Queue:
@@ -44,17 +49,17 @@ class Queue:
     interrupted between calling qsize() and doing an operation on the Queue.
     """
 
-    def __init__(self, maxsize=1024, *, loop=None):
-        if loop is None:
-            self._loop = asyncio.get_event_loop()
-        else:
-            self._loop = loop
+    default_maxsize = 256
+
+    def __init__(self, maxsize=None):
+        if maxsize is None:
+            maxsize = self.default_maxsize
+        if maxsize < 1:
+            raise ValueError('maxsize must be 1 or higher')
         self._maxsize = maxsize
 
-        # Futures.
-        self._getters = collections.deque([], maxsize*10, 1)
-        # Futures.
-        self._putters = collections.deque([], maxsize*10, 1)
+        self._getters = list()  # Watier
+        self._putters = list()  # Watier
         self._unfinished_tasks = 0
         self._finished = asyncio.Event()
         self._finished.set()
@@ -74,9 +79,11 @@ class Queue:
     # End of the overridable methods.
 
     def _wakeup_next(self, waiters):
-        # Wake up the next waiter (if any) that isn't cancelled.
+        # Wake up the next waiter (if any) that isn't awake.
         while waiters:
-            task, waiter = waiters.popleft()
+            # popleft equivalent
+            waiter = waiters[0]
+            del waiters[0]
             if not waiter.is_awake():
                 waiter.wake_up()
                 break
@@ -129,25 +136,20 @@ class Queue:
         Put an item into the queue. If the queue is full, wait until a free
         slot is available before adding item.
         """
-        print(f'>>> In Queue {id(self)}: Putting item: {item!r}')
         while self.full():
-            print(f'>>> In Queue {id(self)}: Queue is full. Wating....')
-            waiter = Waiter()
-            putter = asyncio.create_task(waiter.wait())
-            self._putters.append((putter, waiter))
+            putter = Waiter()
+            self._putters.append(putter)
             try:
-                await putter
-                print(f'>>> In Queue {id(self)}: Awake now ....')
+                await putter.wait_till_awake()
             except:
-                putter.cancel()  # Just in case putter is not done yet.
                 try:
                     # Clean self._putters from canceled putters.
-                    self._putters.remove((putter, waiter))
+                    self._putters.remove(putter)
                 except ValueError:
                     # The putter could be removed from self._putters by a
                     # previous get_nowait call.
                     pass
-                if not self.full() and not putter.cancelled():
+                if not self.full() and not putter.is_alive():
                     # We were woken up by get_nowait(), but can't take
                     # the call.  Wake up the next in line.
                     self._wakeup_next(self._putters)
@@ -160,13 +162,11 @@ class Queue:
         If no free slot is immediately available, raise QueueFull.
         """
         if self.full():
-            print(f'>>> In Queue {id(self)}: Queue FULL')
             raise QueueFull
         self._put(item)
         self._unfinished_tasks += 1
         self._finished.clear()
         self._wakeup_next(self._getters)
-        print(f'>>> In Queue {id(self)}: Put No Wait success with {item}')
 
     async def get(self):
         """Remove and return an item from the queue.
@@ -174,21 +174,19 @@ class Queue:
         If queue is empty, wait until an item is available.
         """
         while self.empty():
-            waiter = Waiter()
-            getter = asyncio.create_task(waiter.wait())
-            self._getters.append((getter, waiter))
+            getter = Waiter()
+            self._getters.append(getter)
             try:
-                await getter
+                await getter.wait_till_awake()
             except:
-                getter.cancel()  # Just in case getter is not done yet.
                 try:
                     # Clean self._getters from canceled getters.
-                    self._getters.remove((getter, waiter))
+                    self._getters.remove(getter)
                 except ValueError:
                     # The getter could be removed from self._getters by a
                     # previous put_nowait call.
                     pass
-                if not self.empty() and not getter.cancelled():
+                if not self.empty() and not getter.is_alive():
                     # We were woken up by put_nowait(), but can't take
                     # the call.  Wake up the next in line.
                     self._wakeup_next(self._getters)
