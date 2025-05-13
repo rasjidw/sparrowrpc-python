@@ -88,9 +88,9 @@ def main():
     
     dispatcher = ThreadedDispatcher(num_threads=5)
     if args.websocket:
-        print('Running websocket server on 6000')
+        print('Running websocket server on 9001')
         websocket_server = ThreadedWebsocketListener(engine_choicies, dispatcher)
-        websocket_server.run_server('0.0.0.0', 6000)
+        websocket_server.run_server('0.0.0.0', 9001)
     else:
         print('Running tcp server on 5000')
         tcp_server = ThreadedTcpListener(engine_choicies, dispatcher)
