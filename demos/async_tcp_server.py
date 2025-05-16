@@ -124,9 +124,9 @@ async def main():
     
     dispatcher = AsyncDispatcher(num_threads=5)
     if args.websocket:
-        print('Running websocket server on 6000')
+        print('Running websocket server on 9001')
         websocket_server = AsyncWebsocketListener(engine_choicies, dispatcher)
-        await websocket_server.run_server('0.0.0.0', 6000)
+        await websocket_server.run_server('0.0.0.0', 9001)
     else:
         print('Running tcp server on 5000')
         tcp_server = AsyncTcpListener(engine_choicies, dispatcher)

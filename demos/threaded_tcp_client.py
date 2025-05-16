@@ -83,7 +83,7 @@ def main(use_msgpack, use_websocket):
     if use_websocket:
         connector = ThreadedWebsocketConnector(engine, dispatcher)
         engine_sig = engine.get_engine_signature()
-        uri = f'ws://127.0.0.1:6000/{engine_sig}'
+        uri = f'ws://127.0.0.1:9001/{engine_sig}'
         channel = connector.connect(uri)
     else:
         connector = ThreadedTcpConnector(engine, dispatcher)
