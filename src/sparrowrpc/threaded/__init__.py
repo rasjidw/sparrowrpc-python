@@ -2,10 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict, namedtuple
-import json
 import logging
-import os
-import socket
 import sys
 from threading import Thread, Lock, Event, current_thread
 from queue import Queue, Empty as QueueEmpty
@@ -41,6 +38,7 @@ def get_thread_or_task_name():
 
 def is_awaitable(may_be_awaitable):
     if sys.implementation.name == 'micropython':
+        # FIXME: review inspect once next release of micropython done
         return type(may_be_awaitable).__name__ == 'generator'
     else:
         return inspect.isawaitable(may_be_awaitable)

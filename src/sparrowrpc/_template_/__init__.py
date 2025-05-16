@@ -3,10 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import defaultdict, namedtuple
 import inspect  #= async
-import json
 import logging
-import os
-import socket
 import sys
 if 'threaded' in __name__: #= remove
     from threading import Thread, Lock, Event, current_thread  #= threaded <
@@ -17,7 +14,7 @@ else: #= remove
     from asyncio import Lock, Event #= async <
     try: #= async <
         from asyncio import Queue, QueueEmpty #= async <
-    except AttributeError:  #= async <
+    except (AttributeError, ImportError):  #= async <
         from uasync.queues import Queue, QueueEmpty # type: ignore  #= async <
 
     # FIXME: add back ThreadPoolExecutor for non-micropython
@@ -59,6 +56,7 @@ def get_thread_or_task_name():
 
 def is_awaitable(may_be_awaitable):
     if sys.implementation.name == 'micropython':
+        # FIXME: review inspect once next release of micropython done
         return type(may_be_awaitable).__name__ == 'generator'
     else:
         return inspect.isawaitable(may_be_awaitable)

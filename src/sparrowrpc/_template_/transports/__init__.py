@@ -5,7 +5,6 @@ from collections import defaultdict, namedtuple
 import json
 import logging
 import os
-import socket
 import sys
 if 'threaded' in __name__: #= remove
     from threading import Thread, Lock, Event, current_thread  #= threaded <
@@ -15,10 +14,15 @@ else: #= remove
     from asyncio import Lock, Event  #= async <
     try: #= async <
         from asyncio import Queue, QueueEmpty #= async <
-    except AttributeError:  #= async <
+    except (AttributeError, ImportError):  #= async <
         from uasync.queues import Queue, QueueEmpty  #= async <
 from traceback import format_exc
 from typing import Any
+
+if sys.platform != 'webassembly':
+    import socket
+else:
+    socket = None
 
 from binarychain import BinaryChain, ChainReader
 

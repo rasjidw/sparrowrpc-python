@@ -5,12 +5,16 @@ from collections import defaultdict, namedtuple
 import json
 import logging
 import os
-import socket
 import sys
 from threading import Thread, Lock, Event, current_thread
 from queue import Queue, Empty as QueueEmpty
 from traceback import format_exc
 from typing import Any
+
+if sys.platform != 'webassembly':
+    import socket
+else:
+    socket = None
 
 from binarychain import BinaryChain, ChainReader
 

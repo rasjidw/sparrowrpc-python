@@ -1,10 +1,13 @@
 
-import asyncio
 import logging
 
 from pyscript import WebSocket
 from pyscript.util import as_bytearray
 
+try: #= async <
+    from asyncio import Queue, QueueEmpty #= async <
+except (AttributeError, ImportError):  #= async <
+    from uasync.queues import Queue, QueueEmpty # type: ignore  #= async <
 
 
 from .core import ProtocolEngineBase
@@ -20,8 +23,8 @@ class PyscriptWebsocketTransport(AsyncTransportBase):
         AsyncTransportBase.__init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.ws_url = None
         self.js_ws = None
-        self.raw_incoming = asyncio.Queue()   # queue of raw incoming messages, terminated by None (signals close)
-        self.open_complete = asyncio.Queue()  # None if open successful, or an exception otherwise
+        self.raw_incoming = Queue()   # queue of raw incoming messages, terminated by None (signals close)
+        self.open_complete = Queue()  # None if open successful, or an exception otherwise
 
     async def connect(self, ws_url):
         self.ws_url = ws_url

@@ -5,16 +5,20 @@ from collections import defaultdict, namedtuple
 import json
 import logging
 import os
-import socket
 import sys
 import asyncio
 from asyncio import Lock, Event
 try:
     from asyncio import Queue, QueueEmpty
-except AttributeError:
+except (AttributeError, ImportError):
     from uasync.queues import Queue, QueueEmpty
 from traceback import format_exc
 from typing import Any
+
+if sys.platform != 'webassembly':
+    import socket
+else:
+    socket = None
 
 from binarychain import BinaryChain, ChainReader
 
