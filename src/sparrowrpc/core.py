@@ -12,9 +12,9 @@ import sys
 from typing import Any, Iterable
 
 
-try:
+if sys.version_info >= (3, 11) or sys.implementation.name == 'micropython':
     from enum import StrEnum
-except ImportError:
+else:
     # FIXME: are we even supporting versions of Python where this is required?
     from backports.strenum import StrEnum # type: ignore
 
@@ -61,7 +61,7 @@ class FinalType(StrEnum):
 
 @dataclass
 class PushIterableInfo:
-    iter: Iterable = None
+    iter: Iterable|None = None
     return_details: Any = None  # FIXME: This is not done yet.
 
 
@@ -95,15 +95,15 @@ class OutgoingRequest(RequestBase):
         self.validate()
 
     def validate(self):
-        # FIXME: Do we will need this restriction now we are event based?
-        if self.request_type == RequestType.SILENT and cb_params:
-            raise ValueError("Can't have callbacks on Slient Requests")
-        
         normal_params = set(self.params.keys()) if self.params else set()
         cb_params = set(self.callback_params.keys()) if self.callback_params else set()
         duplicates = normal_params.intersection(cb_params)
         if duplicates:
             raise ValueError(f'duplicate params found: {duplicates}')        
+
+        # FIXME: Do we will need this restriction now we are event based?
+        if self.request_type == RequestType.SILENT and cb_params:
+            raise ValueError("Can't have callbacks on Slient Requests")        
 
 
 # Notifications are requests that should never return a response (even in the case of errors at the remote end)
