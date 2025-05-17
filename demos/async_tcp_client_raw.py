@@ -16,16 +16,14 @@ from sparrowrpc.engines.v050 import ProtocolEngine
 from sparrowrpc.asyncio import AsyncDispatcher
 from sparrowrpc.asyncio.transports import AsyncTcpConnector
 
-try:
-    from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketConnector
-except ImportError:
-    AsyncWebsocketConnector = None
-
 
 if sys.implementation.name == 'micropython':
     print('**** MICROPYTHON ****')
+    if False:
+        from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketConnector
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 else:
+    from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketConnector
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
 
 
