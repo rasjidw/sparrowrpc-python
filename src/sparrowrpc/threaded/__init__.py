@@ -93,11 +93,15 @@ class ThreadedTransportBase(ABC):
                 else:
                     break
             except Exception as e:
-                log.warning(f'Reader aborting with exception {e!s}')
+                log.error(f'Reader aborting with exception {e!s}')
                 break
         self.remote_closed = True
-        queue_data = (None, self.chain_reader.complete(), self.remote_closed)
-        self.incoming_queue.put(queue_data)
+        try:
+            # put sentinel on incoming queue
+            queue_data = (None, self.chain_reader.complete(), self.remote_closed)
+            self.incoming_queue.put(queue_data)
+        except Exception as e:
+            log.error(f'Error putting sentinel on incoming queue - {e!s}')
 
     def _writer(self):
         while True:
@@ -106,21 +110,25 @@ class ThreadedTransportBase(ABC):
                 break
 
     def _writer_send_one(self):
-        queue_data = self.outgoing_queue.get()
-        if queue_data is None:
-            return True
-        
-        chain, notifier_queue = queue_data
-        assert isinstance(chain, BinaryChain)
-        assert isinstance(notifier_queue, Queue)
-        e = None  # return None if not exception
         try:
-            data = chain.serialise()
-            self._write_data(data)
-        except Exception as exc:
-            e = exc
-        notifier_queue.put(e)
-        return False
+            queue_data = self.outgoing_queue.get()
+            if queue_data is None:
+                return True
+            
+            chain, notifier_queue = queue_data
+            assert isinstance(chain, BinaryChain)
+            assert isinstance(notifier_queue, Queue)
+            e = None  # return None if not exception
+            try:
+                data = chain.serialise()
+                self._write_data(data)
+            except Exception as exc:
+                e = exc
+            notifier_queue.put(e)
+            return False
+        except Exception as e:
+            log.error(f'Writer aborting with exception {e!s}')
+        return True
 
     # FIXME: Do we even need this now - perhaps just read directly from the queue?
     def get_next_binary_chain(self):
@@ -138,9 +146,13 @@ class ThreadedTransportBase(ABC):
             raise e
         
     def shutdown(self):
+        # signal outgoing queue to stop
+        self.outgoing_queue.put(None)
         queue_data = (None, None, None)
         self.incoming_queue.put(queue_data)  # end incoming queue
         self.close()
+        self.reader_thread.join()
+        self.writer_thread.join()
         
     @abstractmethod
     def close(self):
@@ -216,7 +228,8 @@ def threaded_call_func(msg_channel: ThreadedMsgChannel, incoming_msg: IncomingRe
         injector.post_call_cleanup()
     return result
 
-def threaded_run_request_wait_to_complete(msg_channel: ThreadedMsgChannel, request: IncomingRequest, func_info: FuncInfo):
+def threaded_run_request_wait_to_complete(msg_channel: ThreadedMsgChannel, request: IncomingRequest,
+                                                  func_info: FuncInfo, completed_callback=None):
     try:
         if func_info.multipart_response:
             for part_result in threaded_call_func(msg_channel, request, func_info):
@@ -243,7 +256,16 @@ def threaded_run_request_wait_to_complete(msg_channel: ThreadedMsgChannel, reque
             outgoing_msg = OutgoingException(request_id=request.id, exc_info=exc_info) 
         msg_channel._send_message(outgoing_msg)
 
-def threaded_run_request_not_waiting(msg_channel: ThreadedMsgChannel, request: IncomingRequest|IncomingNotification, func_info: FuncInfo):
+    if completed_callback:
+        task = None
+        try:
+            completed_callback(task, request)
+        except Exception as e:
+            log.error(f'Error calling completed_callback: {e!s}')
+
+
+def threaded_run_request_not_waiting(msg_channel: ThreadedMsgChannel, request: IncomingRequest|IncomingNotification, 
+                                             func_info: FuncInfo, completed_callback=None):
     try:
         # we send a response (with no data) to slient requests (before calling the function), but nothing for notifications.
         if isinstance(request, IncomingRequest) and request.request_type == RequestType.SILENT:
@@ -255,15 +277,22 @@ def threaded_run_request_not_waiting(msg_channel: ThreadedMsgChannel, request: I
         # FIXME - make notification and slient errors available to the client software
         log.warning(f'Notification or Silent Request {request} raised error {str(e)}')
 
+    if completed_callback:
+        task = None
+        try:
+            completed_callback(task, request)
+        except Exception as e:
+            log.error(f'Error calling completed_callback: {e!s}')
 
-def threaded_dispatch_request_or_notification(msg_channel, incoming_msg, func_info):
+
+def threaded_dispatch_request_or_notification(msg_channel, incoming_msg, func_info, completed_callback=None):
     if isinstance(incoming_msg, IncomingRequest):
         if incoming_msg.request_type == RequestType.SILENT:
-            threaded_run_request_not_waiting(msg_channel, incoming_msg, func_info)
+            threaded_run_request_not_waiting(msg_channel, incoming_msg, func_info, completed_callback)
         else:
-            threaded_run_request_wait_to_complete(msg_channel, incoming_msg, func_info)
+            threaded_run_request_wait_to_complete(msg_channel, incoming_msg, func_info, completed_callback)
     elif isinstance(incoming_msg, IncomingNotification):
-        threaded_run_request_not_waiting(msg_channel, incoming_msg, func_info)
+        threaded_run_request_not_waiting(msg_channel, incoming_msg, func_info, completed_callback)
     else:
         log.warning(f'Got unhandled message {incoming_msg}')
 

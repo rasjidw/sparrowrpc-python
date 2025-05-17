@@ -119,11 +119,15 @@ class _Template_TransportBase(ABC):
                 else:
                     break
             except Exception as e:
-                log.warning(f'Reader aborting with exception {e!s}')
+                log.error(f'Reader aborting with exception {e!s}')
                 break
         self.remote_closed = True
-        queue_data = (None, self.chain_reader.complete(), self.remote_closed)
-        await self.incoming_queue.put(queue_data)
+        try:
+            # put sentinel on incoming queue
+            queue_data = (None, self.chain_reader.complete(), self.remote_closed)
+            await self.incoming_queue.put(queue_data)
+        except Exception as e:
+            log.error(f'Error putting sentinel on incoming queue - {e!s}')
 
     async def _writer(self):
         while True:
@@ -132,21 +136,25 @@ class _Template_TransportBase(ABC):
                 break
 
     async def _writer_send_one(self):
-        queue_data = await self.outgoing_queue.get()
-        if queue_data is None:
-            return True
-        
-        chain, notifier_queue = queue_data
-        assert isinstance(chain, BinaryChain)
-        assert isinstance(notifier_queue, Queue)
-        e = None  # return None if not exception
         try:
-            data = chain.serialise()
-            await self._write_data(data)
-        except Exception as exc:
-            e = exc
-        await notifier_queue.put(e)
-        return False
+            queue_data = await self.outgoing_queue.get()
+            if queue_data is None:
+                return True
+            
+            chain, notifier_queue = queue_data
+            assert isinstance(chain, BinaryChain)
+            assert isinstance(notifier_queue, Queue)
+            e = None  # return None if not exception
+            try:
+                data = chain.serialise()
+                await self._write_data(data)
+            except Exception as exc:
+                e = exc
+            await notifier_queue.put(e)
+            return False
+        except Exception as e:
+            log.error(f'Writer aborting with exception {e!s}')
+        return True
 
     # FIXME: Do we even need this now - perhaps just read directly from the queue?
     async def get_next_binary_chain(self):
@@ -165,9 +173,25 @@ class _Template_TransportBase(ABC):
             raise e
         
     async def shutdown(self):
+        # signal outgoing queue to stop
+        await self.outgoing_queue.put(None)
         queue_data = (None, None, None)
         await self.incoming_queue.put(queue_data)  # end incoming queue
         await self.close()
+        #= threaded start
+        self.reader_thread.join()
+        self.writer_thread.join()
+        #= threaded end
+        #= async start
+        try:
+            await self.reader_task
+        except Exception:
+            log.error(f'reader_task error:\n{format_exc()}')
+        try:
+            await self.writer_task
+        except Exception as e:
+            log.error(f'writer_task error:\n{format_exc()}')
+        #= async end
         
     @abstractmethod
     async def close(self):
@@ -249,7 +273,8 @@ async def _template__call_func(msg_channel: _Template_MsgChannel, incoming_msg: 
         await injector.post_call_cleanup()
     return result
 
-async def _template__run_request_wait_to_complete(msg_channel: _Template_MsgChannel, request: IncomingRequest, func_info: FuncInfo):
+async def _template__run_request_wait_to_complete(msg_channel: _Template_MsgChannel, request: IncomingRequest,
+                                                  func_info: FuncInfo, completed_callback=None):
     try:
         if func_info.multipart_response:
             async for part_result in await _template__call_func(msg_channel, request, func_info):
@@ -276,7 +301,17 @@ async def _template__run_request_wait_to_complete(msg_channel: _Template_MsgChan
             outgoing_msg = OutgoingException(request_id=request.id, exc_info=exc_info) 
         await msg_channel._send_message(outgoing_msg)
 
-async def _template__run_request_not_waiting(msg_channel: _Template_MsgChannel, request: IncomingRequest|IncomingNotification, func_info: FuncInfo):
+    if completed_callback:
+        task = None #= threaded
+        task = asyncio.current_task() #= async
+        try:
+            await completed_callback(task, request)
+        except Exception as e:
+            log.error(f'Error calling completed_callback: {e!s}')
+
+
+async def _template__run_request_not_waiting(msg_channel: _Template_MsgChannel, request: IncomingRequest|IncomingNotification, 
+                                             func_info: FuncInfo, completed_callback=None):
     try:
         # we send a response (with no data) to slient requests (before calling the function), but nothing for notifications.
         if isinstance(request, IncomingRequest) and request.request_type == RequestType.SILENT:
@@ -288,15 +323,23 @@ async def _template__run_request_not_waiting(msg_channel: _Template_MsgChannel, 
         # FIXME - make notification and slient errors available to the client software
         log.warning(f'Notification or Silent Request {request} raised error {str(e)}')
 
+    if completed_callback:
+        task = None #= threaded
+        task = asyncio.current_task() #= async
+        try:
+            await completed_callback(task, request)
+        except Exception as e:
+            log.error(f'Error calling completed_callback: {e!s}')
 
-async def _template__dispatch_request_or_notification(msg_channel, incoming_msg, func_info):
+
+async def _template__dispatch_request_or_notification(msg_channel, incoming_msg, func_info, completed_callback=None):
     if isinstance(incoming_msg, IncomingRequest):
         if incoming_msg.request_type == RequestType.SILENT:
-            await _template__run_request_not_waiting(msg_channel, incoming_msg, func_info)
+            await _template__run_request_not_waiting(msg_channel, incoming_msg, func_info, completed_callback)
         else:
-            await _template__run_request_wait_to_complete(msg_channel, incoming_msg, func_info)
+            await _template__run_request_wait_to_complete(msg_channel, incoming_msg, func_info, completed_callback)
     elif isinstance(incoming_msg, IncomingNotification):
-        await _template__run_request_not_waiting(msg_channel, incoming_msg, func_info)
+        await _template__run_request_not_waiting(msg_channel, incoming_msg, func_info, completed_callback)
     else:
         log.warning(f'Got unhandled message {incoming_msg}')
 
@@ -310,9 +353,10 @@ class _Template_Dispatcher(_Template_DispatcherBase):
 
         #= async start
         self.tasks = set()
+        self.completed_tasks_queue = Queue()  # using this since MicroPython does not have add_done_callback on tasks
         #self.executor = ThreadPoolExecutor(max_workers=num_threads)  # FIXME: Not using this yet. For non-async functions exported
-        self.task_fetcher = asyncio.create_task(self._async_task_fetcher())
-        # asyncio.ensure_future(self.task_fetcher)
+        self.task_fetcher_task = asyncio.create_task(self._async_task_fetcher())
+        self.completed_task_awaiter_task = asyncio.create_task(self._cleanup_completed_tasks())
         #= async end
         #= threaded start
         self.threads = [Thread(target=self._worker) for _ in range(num_threads)]
@@ -338,11 +382,37 @@ class _Template_Dispatcher(_Template_DispatcherBase):
                 msg_channel, incoming_msg, func_info = await asyncio.wait_for(self.incoming_queue.get(), timeout=1)
             except asyncio.TimeoutError:
                 continue
-            task = asyncio.create_task(_template__dispatch_request_or_notification(msg_channel, incoming_msg, func_info))
+            task = asyncio.create_task(_template__dispatch_request_or_notification(msg_channel, incoming_msg, func_info,
+                                                                                    completed_callback=self._task_done_callback))
             self.tasks.add(task)
-            if sys.implementation.name != 'micropython':
-                task.add_done_callback(self.tasks.discard)
-            # asyncio.ensure_future(task)
+
+    async def _cleanup_completed_tasks(self):
+        while not self.time_to_stop:
+            try:
+                task = await asyncio.wait_for(self.completed_tasks_queue.get(), timeout=1)
+            except asyncio.TimeoutError:
+                continue
+
+            try:
+                # await the completed task to get any exceptions
+                await task
+                log.debug(f'Task {task!s} awaited')
+            except Exception:
+                log.warning(f'Exception happened in task {task!s}')
+                log.warning(format_exc())
+
+            try:
+                self.tasks.remove(task)
+                log.debug(f'Task {task!s} clean up complete')
+            except KeyError:
+                print(f'ERROR: task {task!s} not found!')
+
+    async def _task_done_callback(self, task, incoming_message):
+        log.debug(f'**** Task {task!s} for {incoming_message} is done. ****')
+        try:
+            await self.completed_tasks_queue.put(task)
+        except Exception:
+            print(f'ERROR: Unable to put task {task} onto completed_tasks_queue.')
     #= async end
 
     async def dispatch_incoming(self, msg_channel: _Template_MsgChannel, request: RequestBase, func_info: FuncInfo):
@@ -358,8 +428,14 @@ class _Template_Dispatcher(_Template_DispatcherBase):
             t.join(timeout=timeout)
         #= threaded end
         #= async start
+        await self.task_fetcher_task
+        await self.completed_task_awaiter_task
         for task in self.tasks:
-            await task
+            try:
+                task.cancel()
+                await task
+            except Exception as e:
+                log.error(f'Exception in task {task} - {str(e)}')
         #= async end
         log.debug('Dispatcher shut down')
 
