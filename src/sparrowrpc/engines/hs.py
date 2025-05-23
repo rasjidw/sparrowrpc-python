@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Optional
 
 from binarychain import BinaryChain
 
@@ -76,7 +77,7 @@ class ProtocolEngine(ProtocolEngineBase):
             data['params'] = message.params
         return data
         
-    def _make_out_notification(self, message: OutgoingNotification, message_id: int|None):
+    def _make_out_notification(self, message: OutgoingNotification, message_id: Optional[int]):
         self._check_supported_request(message)
         data = dict(method=self._make_method_name(message))
         if message.params:

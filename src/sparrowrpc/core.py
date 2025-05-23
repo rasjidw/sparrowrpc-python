@@ -9,7 +9,7 @@ except ImportError:
 import inspect
 import logging
 import sys
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 
 if sys.version_info >= (3, 11) or sys.implementation.name == 'micropython':
@@ -61,7 +61,7 @@ class FinalType(StrEnum):
 
 @dataclass
 class PushIterableInfo:
-    iter: Iterable|None = None
+    iter: Optional[Iterable] = None
     return_details: Any = None  # FIXME: This is not done yet.
 
 
@@ -201,7 +201,7 @@ class ControlMsg:
 @dataclass
 class RequestCallbackInfo:
     func: callable = None
-    param_details: list[str]|None = None   # None = unspecified. FIXME: just using None for now. Do we want to send types too? 
+    param_details: Optional[list[str]] = None   # None = unspecified. FIXME: just using None for now. Do we want to send types too? 
 
 
 @dataclass

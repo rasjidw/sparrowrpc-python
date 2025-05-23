@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from binarychain import BinaryChain
 
@@ -95,7 +96,7 @@ class ProtocolEngine(ProtocolEngineBase):
                 msg_parts.append(special_params_part)
         return '', msg_parts
         
-    def _make_out_notification(self, message: OutgoingNotification, message_id: int|None):
+    def _make_out_notification(self, message: OutgoingNotification, message_id: Optional[int]):
         marker_chrs = ['n']
         if message.raw_binary:
             marker_chrs.append('b')
