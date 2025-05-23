@@ -6,7 +6,7 @@ import sys
 from time import sleep
 from threading import current_thread
 
-from sparrowrpc.core import make_export_decorator
+from sparrowrpc.core import export
 from sparrowrpc.engines.v050 import ProtocolEngine
 from sparrowrpc.serialisers import JsonSerialiser
 try:
@@ -31,9 +31,6 @@ except ImportError:
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
                     format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s'
                     )
-
-
-export = make_export_decorator()
 
 
 @export

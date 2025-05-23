@@ -5,7 +5,7 @@ import asyncio
 import logging
 import sys
 
-from sparrowrpc.core import make_export_decorator
+from sparrowrpc.core import export
 from sparrowrpc.engines.v050 import ProtocolEngine
 from sparrowrpc.serialisers import MsgpackSerialiser
 from sparrowrpc.serialisers import JsonSerialiser
@@ -43,9 +43,6 @@ def get_thread_or_task_name():
         return name_getter()
     else:
         return 'dummy'
-
-
-export = make_export_decorator()
 
 
 @export

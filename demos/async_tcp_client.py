@@ -5,7 +5,7 @@ import asyncio
 import logging
 import sys
 
-from sparrowrpc.core import make_export_decorator, IncomingResponse, IncomingException
+from sparrowrpc.core import export, IncomingResponse, IncomingException
 from sparrowrpc.serialisers import JsonSerialiser
 try:
     from sparrowrpc.serialisers import MsgpackSerialiser
@@ -41,8 +41,6 @@ def get_thread_or_task_name():
     else:
         return 'dummy'
 
-
-export = make_export_decorator()
 
 @export
 def display_chat_message(msg):

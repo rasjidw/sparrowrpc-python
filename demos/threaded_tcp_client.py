@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 
-from sparrowrpc.core import make_export_decorator, IncomingResponse, IncomingException
+from sparrowrpc.core import export, IncomingResponse, IncomingException
 from sparrowrpc.serialisers import JsonSerialiser
 try:
     from sparrowrpc.serialisers import MsgpackSerialiser
@@ -30,7 +30,6 @@ except ImportError:
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
 
 
-export = make_export_decorator()
 
 @export
 def display_chat_message(msg):
@@ -94,7 +93,7 @@ def main(args):
         serialiser = JsonSerialiser()
     engine = ProtocolEngine(serialiser)
     print(f'Engine signature is: {engine.get_engine_signature()}')
-    
+
     dispatcher = ThreadedDispatcher(num_threads=5)
     if args.websocket:
         connector = ThreadedWebsocketConnector(engine, dispatcher)

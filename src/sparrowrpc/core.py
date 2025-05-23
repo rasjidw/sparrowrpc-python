@@ -410,9 +410,6 @@ class ProtocolEngineBase(ABC):
 
 # decorators
 
-def make_export_decorator(defaul_namespace=None):
-    return ExportDecorator(defaul_namespace)
-
 
 class ExportDecorator:
     def __init__(self, default_namespace='', func_register = None):
@@ -430,3 +427,8 @@ class ExportDecorator:
             return decorate
         
 
+def make_export_decorator(defaul_namespace=None):
+    return ExportDecorator(defaul_namespace)
+
+
+export = make_export_decorator()
