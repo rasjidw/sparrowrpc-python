@@ -12,7 +12,10 @@ from sparrowrpc.engines.v050 import ProtocolEngine
 
 from sparrowrpc.threaded import ThreadedDispatcher
 from sparrowrpc.threaded.transports import ThreadedTcpConnector
-from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketConnector
+try:
+    from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketConnector
+except ImportError:
+    ThreadedWebsocketConnector = None
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
@@ -161,7 +164,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--msgpack', action='store_true')
-    parser.add_argument('--websocket', action='store_true')
+    if ThreadedWebsocketConnector:
+        parser.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
     root_logger = logging.getLogger()

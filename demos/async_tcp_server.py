@@ -115,7 +115,8 @@ async def division(a, b):
 
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--websocket', action='store_true')
+    if AsyncWebsocketListener:
+        parser.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
     json_engine = ProtocolEngine(JsonSerialiser())

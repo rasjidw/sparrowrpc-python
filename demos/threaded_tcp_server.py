@@ -13,7 +13,10 @@ from sparrowrpc.exceptions import InvalidParams
 
 from sparrowrpc.threaded import ThreadedDispatcher, ThreadedMsgChannel, ThreadedMsgChannelInjector, ThreadedCallbackProxy
 from sparrowrpc.threaded.transports import ThreadedTcpListener
-from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketListener
+try:
+    from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketListener
+except ImportError:
+    ThreadedWebsocketListener = None
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
@@ -79,7 +82,8 @@ def division(a, b):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--websocket', action='store_true')
+    if ThreadedWebsocketListener:
+        parser.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
     json_engine = ProtocolEngine(JsonSerialiser())

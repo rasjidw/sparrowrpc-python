@@ -204,7 +204,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--msgpack', action='store_true')
-    parser.add_argument('--websocket', action='store_true')
+    if AsyncWebsocketConnector:
+        parser.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
     root_logger = logging.getLogger()
