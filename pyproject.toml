@@ -7,7 +7,6 @@ authors = [
 ]
 
 dependencies = [
-    "msgpack",
     "binarychain",
     'backports.strenum; python_version < "3.11"',
 ]
@@ -20,8 +19,12 @@ optional-dependencies.websockets = [
     "websockets",
 ]
 
-optional-dependencies.async_files = [
-    "aiofiles",
+optional-dependencies.msgpack = [
+    "msgpack",
+]
+
+optional-dependencies.cbor = [
+    "cbor2",
 ]
 
 [tool.setuptools]
