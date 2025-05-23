@@ -6,7 +6,15 @@ import logging
 import sys
 
 from sparrowrpc.core import make_export_decorator, IncomingResponse, IncomingException
-from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
+from sparrowrpc.serialisers import JsonSerialiser
+try:
+    from sparrowrpc.serialisers import MsgpackSerialiser
+except ImportError:
+     MsgpackSerialiser = None
+try:
+    from sparrowrpc.serialisers import CborSerialiser
+except ImportError:
+    CborSerialiser = None
 from sparrowrpc.engines.v050 import ProtocolEngine
 
 from sparrowrpc.asyncio import AsyncDispatcher
@@ -107,14 +115,18 @@ class AsyncData:
             raise StopAsyncIteration()
 
 
-async def main(use_msgpack, use_websocket):
-    if use_msgpack:
+async def main(args):
+    if args.msgpack:
         serialiser = MsgpackSerialiser()
+    elif args.cbor:
+        serialiser = CborSerialiser()
     else:
         serialiser = JsonSerialiser()
     engine = ProtocolEngine(serialiser)
+    print(f'Engine signature is: {engine.get_engine_signature()}')
+
     dispatcher = AsyncDispatcher(num_threads=5)
-    if use_websocket:
+    if args.websocket:
         connector = AsyncWebsocketConnector(engine, dispatcher)
         engine_sig = engine.get_engine_signature()
         uri = f'ws://127.0.0.1:9001/{engine_sig}'
@@ -203,7 +215,13 @@ async def main(use_msgpack, use_websocket):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--msgpack', action='store_true')
+
+    group = parser.add_mutually_exclusive_group()
+    if MsgpackSerialiser:
+        group.add_argument('--msgpack', action='store_true')
+    if CborSerialiser:
+        group.add_argument('--cbor', action='store_true')
+
     if AsyncWebsocketConnector:
         parser.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
@@ -211,4 +229,4 @@ if __name__ == '__main__':
     root_logger = logging.getLogger()
     if args.debug:
         root_logger.setLevel(logging.DEBUG)
-    asyncio.run(main(args.msgpack, args.websocket))
+    asyncio.run(main(args))

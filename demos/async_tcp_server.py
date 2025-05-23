@@ -7,7 +7,17 @@ import sys
 
 from sparrowrpc.core import make_export_decorator
 from sparrowrpc.engines.v050 import ProtocolEngine
-from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
+from sparrowrpc.serialisers import MsgpackSerialiser
+from sparrowrpc.serialisers import JsonSerialiser
+try:
+    from sparrowrpc.serialisers import MsgpackSerialiser
+except ImportError:
+     MsgpackSerialiser = None
+try:
+    from sparrowrpc.serialisers import CborSerialiser
+except ImportError:
+    CborSerialiser = None
+
 from sparrowrpc.exceptions import InvalidParams
 
 from sparrowrpc.asyncio import AsyncDispatcher, AsyncMsgChannel, AsyncMsgChannelInjector, AsyncCallbackProxy
@@ -120,8 +130,15 @@ async def main():
     args = parser.parse_args()
 
     json_engine = ProtocolEngine(JsonSerialiser())
-    msgpack_engine = ProtocolEngine(MsgpackSerialiser())
-    engine_choicies = [msgpack_engine, json_engine]
+    engine_choicies = [json_engine]
+    if MsgpackSerialiser:
+        msgpack_engine = ProtocolEngine(MsgpackSerialiser())
+        engine_choicies.append(msgpack_engine)
+    if CborSerialiser:
+        cbor_engine = ProtocolEngine(CborSerialiser())
+        engine_choicies.append(cbor_engine)
+
+    print(f'Engine Serialisation options are: {[e.get_engine_signature() for e in engine_choicies]}')
     
     dispatcher = AsyncDispatcher(num_threads=5)
     if args.websocket:

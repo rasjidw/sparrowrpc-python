@@ -1,18 +1,23 @@
 from abc import ABC, abstractmethod
 import json
+import sys
 from typing import Any
 
 
 try:
-    import msgpack
+    if sys.implementation.name == 'micropython':
+        import umsgpack as msgpack  # micropython
+    else:
+        import msgpack
     have_msgpack = True
 except ImportError:
-    try:
-        import umsgpack as msgpack  # micropython
-        have_msgpack = True
-    except ImportError:
         have_msgpack = False
 
+try:
+    import cbor2
+    have_cbor2 = True
+except ImportError:
+    have_cbor2 = False
 
 
 class BaseSerialiser(ABC):
@@ -25,6 +30,14 @@ class BaseSerialiser(ABC):
         raise NotImplementedError()
 
 
+class JsonSerialiser(BaseSerialiser):
+    sig = 'JS'
+    def serialise(self, obj_data: Any) -> bytes:
+        return json.dumps(obj_data).encode()
+    def deserialise(self, bin_data: bytes) -> Any:
+        return json.loads(bin_data.decode())
+
+
 if have_msgpack:
     class MsgpackSerialiser(BaseSerialiser):
         sig = 'MP'
@@ -34,10 +47,10 @@ if have_msgpack:
             return msgpack.unpackb(bin_data)
 
 
-class JsonSerialiser(BaseSerialiser):
-    sig = 'JS'
-    def serialise(self, obj_data: Any) -> bytes:
-        return json.dumps(obj_data).encode()
-    def deserialise(self, bin_data: bytes) -> Any:
-        return json.loads(bin_data.decode())
-
+if have_cbor2:
+    class CborSerialiser(BaseSerialiser):
+        sig = 'CBOR'
+        def serialise(self, obj_data: Any) -> bytes:
+            return cbor2.dumps(obj_data)
+        def deserialise(self, bin_data: bytes) -> Any:
+            return cbor2.loads(bin_data)

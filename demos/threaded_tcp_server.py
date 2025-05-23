@@ -8,7 +8,16 @@ from threading import current_thread
 
 from sparrowrpc.core import make_export_decorator
 from sparrowrpc.engines.v050 import ProtocolEngine
-from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
+from sparrowrpc.serialisers import JsonSerialiser
+try:
+    from sparrowrpc.serialisers import MsgpackSerialiser
+except ImportError:
+     MsgpackSerialiser = None
+try:
+    from sparrowrpc.serialisers import CborSerialiser
+except ImportError:
+    CborSerialiser = None
+
 from sparrowrpc.exceptions import InvalidParams
 
 from sparrowrpc.threaded import ThreadedDispatcher, ThreadedMsgChannel, ThreadedMsgChannelInjector, ThreadedCallbackProxy
@@ -85,11 +94,17 @@ def main():
     if ThreadedWebsocketListener:
         parser.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
-
     json_engine = ProtocolEngine(JsonSerialiser())
-    msgpack_engine = ProtocolEngine(MsgpackSerialiser())
-    engine_choicies = [msgpack_engine, json_engine]
-    
+    engine_choicies = [json_engine]
+    if MsgpackSerialiser:
+        msgpack_engine = ProtocolEngine(MsgpackSerialiser())
+        engine_choicies.append(msgpack_engine)
+    if CborSerialiser:
+        cbor_engine = ProtocolEngine(CborSerialiser())
+        engine_choicies.append(cbor_engine)
+
+    print(f'Engine Serialisation options are: {[e.get_engine_signature() for e in engine_choicies]}')
+
     dispatcher = ThreadedDispatcher(num_threads=5)
     if args.websocket:
         print('Running websocket server on 9001')
