@@ -11,6 +11,9 @@ except ImportError:
     from udataclasses import dataclass  # type: ignore (for micropython)
 
 
+__all__ = ['FuncInfo', 'FunctionRegister', 'default_func_register', 'MsgChannelRegister', 'global_channel_register']
+
+
 log = logging.getLogger(__name__)
 
 

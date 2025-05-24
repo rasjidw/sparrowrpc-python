@@ -1,6 +1,3 @@
-
-
-
 class CallerException(Exception):
     @classmethod
     def get_subclasses(cls):
