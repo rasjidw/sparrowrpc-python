@@ -20,8 +20,8 @@ class ExportDecorator:
             return decorate
 
 
-def make_export_decorator(defaul_namespace=None):
-    return ExportDecorator(defaul_namespace)
+def make_export_decorator(default_namespace=''):
+    return ExportDecorator(default_namespace)
 
 
 export = make_export_decorator()
