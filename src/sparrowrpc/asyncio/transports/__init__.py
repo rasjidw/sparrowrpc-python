@@ -1,3 +1,10 @@
+# -----------------------------------------------------------------------
+# WARNING: This file is auto-generated and should not be edited manually!
+#
+# It is generated using 'generate_from_template_code.py' using the
+# _template_ directory as the source.
+# -----------------------------------------------------------------------
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

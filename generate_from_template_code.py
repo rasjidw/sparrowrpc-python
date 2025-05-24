@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from inspect import cleandoc
 import pathlib
 
 
@@ -30,7 +31,19 @@ class TextCooker:
         self.do_simple_replacements()
         self.do_line_processing()
         self.current_text += '\n'  # add new line at the end
+        self.add_heading()  # at the end so we can use _template_ in the text.
         return self.current_text
+    
+    def add_heading(self):
+        heading = cleandoc("""
+                    # -----------------------------------------------------------------------
+                    # WARNING: This file is auto-generated and should not be edited manually!
+                    #
+                    # It is generated using 'generate_from_template_code.py' using the
+                    # _template_ directory as the source.
+                    # -----------------------------------------------------------------------
+                  """)
+        self.current_text = heading + '\n' * 2 + self.current_text
 
     def do_simple_replacements(self):
         dest_str = self.mode
