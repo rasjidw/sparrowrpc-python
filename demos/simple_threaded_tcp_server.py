@@ -6,7 +6,7 @@ import sys
 from time import sleep
 from threading import current_thread
 
-from sparrowrpc.core import make_export_decorator
+from sparrowrpc.decorators import make_export_decorator
 from sparrowrpc.threaded import ThreadedMsgChannelInjector, ThreadedCallbackProxy
 from sparrowrpc.engines import hs, v050
 from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser

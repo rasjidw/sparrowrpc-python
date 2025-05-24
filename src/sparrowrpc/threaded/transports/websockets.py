@@ -6,7 +6,7 @@ from websockets.sync import server
 
 import websockets.exceptions
 
-from ...core import ProtocolEngineBase
+from ...bases import ProtocolEngineBase
 from ...threaded import ThreadedMsgChannel
 from ..transports import ThreadedTransportBase
 

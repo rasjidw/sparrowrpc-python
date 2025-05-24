@@ -6,7 +6,7 @@ import sys
 from time import sleep
 from threading import current_thread
 
-from sparrowrpc.core import export
+from sparrowrpc.decorators import export
 from sparrowrpc.engines.v050 import ProtocolEngine
 from sparrowrpc.serialisers import JsonSerialiser
 try:
@@ -103,7 +103,7 @@ def main():
     print(f'Engine Serialisation options are: {[e.get_engine_signature() for e in engine_choicies]}')
 
     dispatcher = ThreadedDispatcher(num_threads=5)
-    if args.websocket:
+    if getattr(args, 'websocket', False):
         print('Running websocket server on 9001')
         websocket_server = ThreadedWebsocketListener(engine_choicies, dispatcher)
         websocket_server.run_server('0.0.0.0', 9001)

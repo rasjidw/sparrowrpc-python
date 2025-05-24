@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sys
+
 from threading import Thread, Lock, Event, current_thread
 from queue import Queue, Empty as QueueEmpty
 from traceback import format_exc
@@ -19,8 +20,9 @@ else:
 from binarychain import BinaryChain, ChainReader
 
 
-from ...core import ProtocolEngineBase, OutgoingRequest, OutgoingResponse, IncomingRequest, IncomingResponse
+from ...bases import ProtocolEngineBase
 from ...engines import hs
+from ...messages import IncomingRequest, IncomingResponse, OutgoingRequest, OutgoingResponse
 
 from ...threaded import ThreadedMsgChannel, ThreadedTransportBase
 
@@ -300,11 +302,11 @@ class SubprocessRunnerBase(ABC):
 
 class ParentSubprocessRunner(SubprocessRunnerBase):
     def get_channel(self, child_stdin, child_stdout):
-        transport = StreamTransport(outgoing_stream=child_stdin, incoming_stream=child_stdout, engine=self.engine)
+        transport = StreamTransport(outgoing_stream=child_stdin, incoming_stream=child_stdout)
         return ThreadedMsgChannel(transport, initiator=True, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
 class ChildSubprocessRunner(SubprocessRunnerBase):
     def get_channel(self):
-        transport = StreamTransport(sys.stdin.buffer, sys.stdout.buffer, self.engine)
+        transport = StreamTransport(sys.stdin.buffer, sys.stdout.buffer)
         return ThreadedMsgChannel(transport, initiator=False, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)

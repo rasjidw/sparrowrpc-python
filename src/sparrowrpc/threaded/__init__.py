@@ -4,6 +4,11 @@ from abc import ABC, abstractmethod
 from collections import defaultdict, namedtuple
 import logging
 import sys
+
+from ..bases import MsgChannelBase
+
+from ..registers import FuncInfo
+
 from threading import Thread, Lock, Event, current_thread
 from queue import Queue, Empty as QueueEmpty
 from typing import Iterable
@@ -17,16 +22,13 @@ from typing import Any, TYPE_CHECKING
 from binarychain import BinaryChain, ChainReader
 
 
-from ..core import (RequestBase, ResponseType, FinalType, MessageSentEvent,
-                       OutgoingRequest, OutgoingResponse, OutgoingNotification, OutgoingException, OutgoingAcknowledge,
-                       IncomingRequest, IncomingResponse, IncomingNotification, IncomingException, IncomingAcknowledge,
-                       FuncInfo, RequestCallbackInfo, IterableCallbackInfo,
-                         RequestType, MtpeExceptionCategory, MtpeExceptionInfo, global_channel_register,
-                         MsgChannelBase)
-from ..core import ProtocolEngineBase
+from ..bases import ProtocolEngineBase
+
+from ..messages import (FinalType, IncomingAcknowledge, IncomingException, IncomingNotification, IncomingRequest, IncomingResponse, IterableCallbackInfo,
+                        MessageSentEvent, MtpeExceptionCategory, MtpeExceptionInfo, OutgoingAcknowledge, OutgoingException,
+                        OutgoingNotification, OutgoingRequest, OutgoingResponse, RequestBase, RequestCallbackInfo, RequestType, ResponseType)
 
 from ..exceptions import CallerException, CalleeException
-from ..core import FunctionRegister, default_func_register
 
 
 log = logging.getLogger(__name__)

@@ -10,7 +10,7 @@ else: #= remove
 
 import websockets.exceptions
 
-from ...core import ProtocolEngineBase
+from ...bases import ProtocolEngineBase
 from ..._template_ import _Template_MsgChannel
 from ..transports import _Template_TransportBase
 

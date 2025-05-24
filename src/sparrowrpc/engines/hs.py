@@ -4,13 +4,15 @@ from typing import Optional
 
 from binarychain import BinaryChain
 
-from ..core import FunctionRegister
+from ..messages import ControlMsg, FinalType, IncomingAcknowledge, IncomingNotification, IncomingRequest, IncomingResponse, MtpeExceptionCategory, MtpeExceptionInfo, OutgoingAcknowledge, OutgoingNotification, OutgoingRequest, OutgoingResponse, RequestBase, RequestType, ResponseType
 
-from ..core import ProtocolEngineBase
-from ..core import OutgoingAcknowledge, OutgoingException, OutgoingNotification, OutgoingRequest, OutgoingResponse
-from ..core import IncomingAcknowledge, IncomingException, IncomingNotification, IncomingRequest, IncomingResponse
-from ..core import ControlMsg, RequestBase, RequestCallbackInfo, RequestType, ResponseType, MtpeExceptionCategory, MtpeExceptionInfo
-from ..core import RequestType, ResponseType, FinalType, ResponseBase
+from ..registers import FunctionRegister
+
+from ..bases import ProtocolEngineBase
+from ..messages import OutgoingException
+from ..messages import IncomingException
+from ..messages import RequestCallbackInfo
+from ..messages import ResponseBase
 
 from ..exceptions import ProtocolError
 

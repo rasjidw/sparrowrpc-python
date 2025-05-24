@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sys
+
 import asyncio
 from asyncio import Lock, Event
 try:
@@ -23,8 +24,9 @@ else:
 from binarychain import BinaryChain, ChainReader
 
 
-from ...core import ProtocolEngineBase, OutgoingRequest, OutgoingResponse, IncomingRequest, IncomingResponse
+from ...bases import ProtocolEngineBase
 from ...engines import hs
+from ...messages import IncomingRequest, IncomingResponse, OutgoingRequest, OutgoingResponse
 
 from ...asyncio import AsyncMsgChannel, AsyncTransportBase
 

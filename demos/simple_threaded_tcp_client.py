@@ -6,7 +6,8 @@ import sys
 import threading
 import time
 
-from sparrowrpc.core import make_export_decorator, IncomingResponse, IncomingException
+from sparrowrpc.decorators import make_export_decorator
+from sparrowrpc.messages import IncomingException, IncomingResponse
 from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
 from sparrowrpc.engines import hs, v050
 

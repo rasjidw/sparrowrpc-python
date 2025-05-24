@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sys
+
 if 'threaded' in __name__: #= remove
     from threading import Thread, Lock, Event, current_thread  #= threaded <
     from queue import Queue, Empty as QueueEmpty  #= threaded <
@@ -27,8 +28,9 @@ else:
 from binarychain import BinaryChain, ChainReader
 
 
-from ...core import ProtocolEngineBase, OutgoingRequest, OutgoingResponse, IncomingRequest, IncomingResponse
+from ...bases import ProtocolEngineBase
 from ...engines import hs
+from ...messages import IncomingRequest, IncomingResponse, OutgoingRequest, OutgoingResponse
 
 from ..._template_ import _Template_MsgChannel, _Template_TransportBase
 

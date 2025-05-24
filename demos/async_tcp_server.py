@@ -5,7 +5,7 @@ import asyncio
 import logging
 import sys
 
-from sparrowrpc.core import export
+from sparrowrpc.decorators import export
 from sparrowrpc.engines.v050 import ProtocolEngine
 from sparrowrpc.serialisers import MsgpackSerialiser
 from sparrowrpc.serialisers import JsonSerialiser
@@ -138,7 +138,7 @@ async def main():
     print(f'Engine Serialisation options are: {[e.get_engine_signature() for e in engine_choicies]}')
     
     dispatcher = AsyncDispatcher(num_threads=5)
-    if args.websocket:
+    if getattr(args, 'websocket', False):
         print('Running websocket server on 9001')
         websocket_server = AsyncWebsocketListener(engine_choicies, dispatcher)
         await websocket_server.run_server('0.0.0.0', 9001)

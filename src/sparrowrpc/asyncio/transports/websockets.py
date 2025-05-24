@@ -6,7 +6,7 @@ from websockets.asyncio import server
 
 import websockets.exceptions
 
-from ...core import ProtocolEngineBase
+from ...bases import ProtocolEngineBase
 from ...asyncio import AsyncMsgChannel
 from ..transports import AsyncTransportBase
 
