@@ -5,7 +5,7 @@ import asyncio
 import logging
 import sys
 
-from sparrowrpc.decorators import export
+from sparrowrpc import export
 from sparrowrpc.messages import IncomingException, IncomingResponse
 from sparrowrpc.serialisers import JsonSerialiser
 try:

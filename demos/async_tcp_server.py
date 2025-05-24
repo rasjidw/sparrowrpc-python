@@ -5,7 +5,7 @@ import asyncio
 import logging
 import sys
 
-from sparrowrpc.decorators import export
+from sparrowrpc import export, InvalidParams
 from sparrowrpc.engines.v050 import ProtocolEngine
 from sparrowrpc.serialisers import MsgpackSerialiser
 from sparrowrpc.serialisers import JsonSerialiser
@@ -17,8 +17,6 @@ try:
     from sparrowrpc.serialisers import CborSerialiser
 except ImportError:
     CborSerialiser = None
-
-from sparrowrpc.exceptions import InvalidParams
 
 from sparrowrpc.asyncio import AsyncDispatcher, AsyncMsgChannel, AsyncMsgChannelInjector, AsyncCallbackProxy
 from sparrowrpc.asyncio.transports import AsyncTcpListener

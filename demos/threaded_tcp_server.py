@@ -6,7 +6,7 @@ import sys
 from time import sleep
 from threading import current_thread
 
-from sparrowrpc.decorators import export
+from sparrowrpc import export, InvalidParams
 from sparrowrpc.engines.v050 import ProtocolEngine
 from sparrowrpc.serialisers import JsonSerialiser
 try:
@@ -17,8 +17,6 @@ try:
     from sparrowrpc.serialisers import CborSerialiser
 except ImportError:
     CborSerialiser = None
-
-from sparrowrpc.exceptions import InvalidParams
 
 from sparrowrpc.threaded import ThreadedDispatcher, ThreadedMsgChannel, ThreadedMsgChannelInjector, ThreadedCallbackProxy
 from sparrowrpc.threaded.transports import ThreadedTcpListener
