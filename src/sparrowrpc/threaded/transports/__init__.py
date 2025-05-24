@@ -302,11 +302,11 @@ class SubprocessRunnerBase(ABC):
 
 class ParentSubprocessRunner(SubprocessRunnerBase):
     def get_channel(self, child_stdin, child_stdout):
-        transport = StreamTransport(outgoing_stream=child_stdin, incoming_stream=child_stdout)
+        transport = StreamTransport(outgoing_stream=child_stdin, incoming_stream=child_stdout, engine=self.engine)
         return ThreadedMsgChannel(transport, initiator=True, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
 class ChildSubprocessRunner(SubprocessRunnerBase):
     def get_channel(self):
-        transport = StreamTransport(sys.stdin.buffer, sys.stdout.buffer)
+        transport = StreamTransport(sys.stdin.buffer, sys.stdout.buffer, self.engine)
         return ThreadedMsgChannel(transport, initiator=False, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
