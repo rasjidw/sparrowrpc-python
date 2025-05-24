@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict, namedtuple
-import inspect  #= async
+import inspect
 import logging
 import sys
 
@@ -22,8 +22,8 @@ else: #= remove
     except (AttributeError, ImportError):  #= async <
         from uasync.queues import Queue, QueueEmpty # type: ignore  #= async <
 
-    # FIXME: add back ThreadPoolExecutor for non-micropython
-    # also add @non_blocking decorator
+    # FIXME: add back ThreadPoolExecutor for non-micropython  #= async <
+    # also add @non_blocking decorator  #= async <
     #from concurrent.futures import ThreadPoolExecutor #= async <
     from typing import AsyncIterable as Iterable  #= async <
 from traceback import format_exc, print_exc

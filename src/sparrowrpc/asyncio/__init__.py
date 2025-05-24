@@ -17,8 +17,8 @@ try:
 except (AttributeError, ImportError):
     from uasync.queues import Queue, QueueEmpty # type: ignore
 
-    # FIXME: add back ThreadPoolExecutor for non-micropython
-    # also add @non_blocking decorator
+# FIXME: add back ThreadPoolExecutor for non-micropython
+# also add @non_blocking decorator
 #from concurrent.futures import ThreadPoolExecutor
 from typing import AsyncIterable as Iterable
 from traceback import format_exc, print_exc

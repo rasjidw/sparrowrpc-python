@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict, namedtuple
+import inspect
 import logging
 import sys
 
@@ -13,8 +14,6 @@ from threading import Thread, Lock, Event, current_thread
 from queue import Queue, Empty as QueueEmpty
 from typing import Iterable
 
-    # FIXME: add back ThreadPoolExecutor for non-micropython
-    # also add @non_blocking decorator
 from traceback import format_exc, print_exc
 from typing import Any, TYPE_CHECKING
 
