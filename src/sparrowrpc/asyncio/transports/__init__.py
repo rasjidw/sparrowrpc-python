@@ -181,7 +181,7 @@ class AsyncHandshake:
         return [engine.get_engine_signature() for engine in self.engine_choices]
 
 
-class AsyncTcpAsyncTransport(AsyncTransportBase):
+class AsyncTcpTransport(AsyncTransportBase):
     def __init__(self, stream_reader: asyncio.StreamReader, stream_writer: asyncio.StreamWriter, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
         AsyncTransportBase.__init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.stream_reader = stream_reader
@@ -218,7 +218,7 @@ class AsyncTcpConnector:
             reader, writer = await asyncio.open_unix_connection(path=self.unix_socket_path)
         else:
             reader, writer = await asyncio.open_connection(host, port)
-        transport = AsyncTcpAsyncTransport(reader, writer)
+        transport = AsyncTcpTransport(reader, writer)
         await transport.start()
         handshake = self.handshake_cls(transport, self.initiator, self.engine_choices)
         await handshake.start_handshake()
@@ -290,7 +290,7 @@ class AsyncTcpListener:
         # FIXME: work out what the peername format is in micropython
         remote_address = repr(async_writer.get_extra_info('peername'))
         log.info(f'REMOTE ADDRESS: {remote_address}')
-        transport = AsyncTcpAsyncTransport(async_reader, async_writer)
+        transport = AsyncTcpTransport(async_reader, async_writer)
         channel_task = asyncio.create_task(self._start_channel(transport, remote_address))
         self.channel_tasks[remote_address] = channel_task
 
