@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 
 from threading import Thread, Lock, Event, current_thread
 from queue import Queue, Empty as QueueEmpty
@@ -159,6 +160,8 @@ class ThreadedHandshake:
     
     def _get_handshake_msg(self):
         raw_bc, complete, remote_closed = self.transport.incoming_queue.get()
+        if raw_bc is None:
+            raise RuntimeError('Connetion closed')  # FIXME - gracefully handle connectcion closures
         if raw_bc:
             assert isinstance(raw_bc, BinaryChain)
         if raw_bc.prefix == self.BC_PREFIX:
@@ -200,11 +203,18 @@ class ThreadedTcpConnector:
         self.func_registers = func_registers
         self.handshake_cls = handshake_cls if handshake_cls else ThreadedHandshake
         self.initiator = True
+        self.unix_socket_path = None
         
     def connect(self, host, port):
-        conn_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        remote_address = (host, port)
-        conn_socket.connect(remote_address)
+        if port is None:
+            self.unix_socket_path = host
+        if self.unix_socket_path:
+            conn_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            conn_socket.connect(self.unix_socket_path)
+        else:
+            conn_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            remote_address = (host, port)
+            conn_socket.connect(remote_address)
         transport = ThreadedTcpTransport(conn_socket)
         transport.start()
         handshake = self.handshake_cls(transport, self.initiator, self.engine_choices)
@@ -213,6 +223,14 @@ class ThreadedTcpConnector:
             return ThreadedMsgChannel(transport, initiator=self.initiator, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
         else:
             raise RuntimeError('No engine set')
+
+
+class ThreadedUnixSocketConnector(ThreadedTcpConnector):
+    def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
+        ThreadedTcpConnector.__init__(self, engine_choices, dispatcher, func_registers, handshake_cls)
+
+    def connect(self, path):
+        return super().connect(path, None)
 
 
 class ThreadedTcpListener:
@@ -230,14 +248,46 @@ class ThreadedTcpListener:
         self.channel_threads = dict()  # remote_address -> thread
         self.connected_channels = dict()  # remote_address -> channel
         self.time_to_stop = False
+        self.unix_socket_path = None
+        self.replace_unix_socket_if_in_use = False
+        self.server_socket = None
+
+    def _detect_unix_socket_in_use(self, socket_path):
+        detecting_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            detecting_socket.connect(socket_path)
+            detecting_socket.close()
+            return True
+        except Exception:
+            return False
 
     def run_server(self, bind_address, port):
-        self.address = (bind_address, port)
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind(self.address)
+        if port is None:
+            self.address = bind_address
+            self.unix_socket_path = bind_address
+        else:
+            self.address = f'{bind_address}:{port}'
+        if self.unix_socket_path:
+            if os.path.exists(self.unix_socket_path) and not self.replace_unix_socket_if_in_use:
+                if self._detect_unix_socket_in_use(self.unix_socket_path):
+                    raise OSError(f'Unix Socket {self.unix_socket_path} in use')
+                
+            # get a temporary name in the same directory as the final path
+            socket_dir = os.path.dirname(self.unix_socket_path)
+            with tempfile.NamedTemporaryFile(dir=socket_dir, delete=True) as f:
+                temp_uds = f.name
+            self.server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.server_socket.bind(temp_uds)
+
+            # renames are atomic on unix / linux
+            os.rename(temp_uds, self.unix_socket_path)
+        else:
+            self.server_socket = socket.socket(socket.AF_UNSPEC, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            address_and_port = (bind_address, port)
+            self.server_socket.bind(address_and_port)
         self.server_socket.listen(5)
-        log.info(f'Listing on {self.address[0]}:{self.address[1]}')
+        log.info(f'Listing on {self.address}')
         try:
             while not self.time_to_stop:
                 client_socket, remote_address = self.server_socket.accept()
@@ -259,6 +309,9 @@ class ThreadedTcpListener:
             assert isinstance(channel_thread, Thread)
             channel_thread.join()
         self.server_socket.close()
+        # cleanup unix socket if we are not replacing by default
+        if self.unix_socket_path and not self.replace_unix_socket_if_in_use:
+            os.remove(self.unix_socket_path)
         log.info('Server Shutdown Complete')
 
     def _start_channel(self, transport: ThreadedTcpTransport, remote_address):
@@ -270,6 +323,15 @@ class ThreadedTcpListener:
             channel = ThreadedMsgChannel(transport, initiator=False, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             channel.start_channel()
+
+
+class ThreadedUnixSocketListener(ThreadedTcpListener):
+    def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
+        ThreadedTcpListener.__init__(self, engine_choices, dispatcher, func_registers, handshake_cls)
+
+    def run_server(self, path, replace_if_in_use=False):
+        self.replace_unix_socket_if_in_use = replace_if_in_use
+        super().run_server(path, None)
 
 
 class StreamTransport(ThreadedTransportBase):

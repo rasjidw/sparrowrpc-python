@@ -21,7 +21,7 @@ except ImportError:
 from sparrowrpc.engines.v050 import ProtocolEngine
 
 from sparrowrpc.threaded import ThreadedDispatcher
-from sparrowrpc.threaded.transports import ThreadedTcpConnector
+from sparrowrpc.threaded.transports import ThreadedTcpConnector, ThreadedUnixSocketConnector
 try:
     from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketConnector
 except ImportError:
@@ -102,8 +102,13 @@ def main(args):
         uri = f'ws://127.0.0.1:9001/{engine_sig}'
         channel = connector.connect(uri)
     else:
-        connector = ThreadedTcpConnector(engine, dispatcher)
-        channel = connector.connect('127.0.0.1', 5000)
+        if args.unix_socket:
+            path = '/tmp/sparrowrpc.sock'
+            connector = ThreadedUnixSocketConnector(engine, dispatcher)
+            channel = connector.connect(path)
+        else:
+            connector = ThreadedTcpConnector(engine, dispatcher)
+            channel = connector.connect('127.0.0.1', 5000)
     channel.start_channel()
 
     # start of test calls
@@ -177,14 +182,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true')
 
-    group = parser.add_mutually_exclusive_group()
+    serialisation_group = parser.add_mutually_exclusive_group()
     if MsgpackSerialiser:
-        group.add_argument('--msgpack', action='store_true')
+        serialisation_group.add_argument('--msgpack', action='store_true')
     if CborSerialiser:
-        group.add_argument('--cbor', action='store_true')
+        serialisation_group.add_argument('--cbor', action='store_true')
 
+    conn_group = parser.add_mutually_exclusive_group()
+    conn_group.add_argument('--unix-socket', action='store_true')
     if ThreadedWebsocketConnector:
-        parser.add_argument('--websocket', action='store_true')
+        conn_group.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
     root_logger = logging.getLogger()

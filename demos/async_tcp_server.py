@@ -19,7 +19,7 @@ except ImportError:
     CborSerialiser = None
 
 from sparrowrpc.asyncio import AsyncDispatcher, AsyncMsgChannel, AsyncMsgChannelInjector, AsyncCallbackProxy
-from sparrowrpc.asyncio.transports import AsyncTcpListener
+from sparrowrpc.asyncio.transports import AsyncTcpListener, AsyncUnixSocketListener
 try:
     from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketListener
 except ImportError:
@@ -120,8 +120,10 @@ async def division(a, b):
 
 async def main():
     parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--unix-socket', action='store_true')
     if AsyncWebsocketListener:
-        parser.add_argument('--websocket', action='store_true')
+        group.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
     json_engine = ProtocolEngine(JsonSerialiser())
@@ -141,9 +143,15 @@ async def main():
         websocket_server = AsyncWebsocketListener(engine_choicies, dispatcher)
         await websocket_server.run_server('0.0.0.0', 9001)
     else:
-        print('Running tcp server on 5000')
-        tcp_server = AsyncTcpListener(engine_choicies, dispatcher)
-        await tcp_server.run_server('0.0.0.0', 5000)
+        if args.unix_socket:
+            path = '/tmp/sparrowrpc.sock'
+            print(f'Listening on unix socket {path}')
+            socket_server = AsyncUnixSocketListener(engine_choicies, dispatcher)
+            await socket_server.run_server(path)
+        else:
+            print('Running tcp server on 5000')
+            tcp_server = AsyncTcpListener(engine_choicies, dispatcher)
+            await tcp_server.run_server('0.0.0.0', 5000)
     await dispatcher.shutdown()
 
 

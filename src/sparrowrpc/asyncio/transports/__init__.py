@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 
 import asyncio
 from asyncio import Lock, Event
@@ -163,6 +164,8 @@ class AsyncHandshake:
     
     async def _get_handshake_msg(self):
         raw_bc, complete, remote_closed = await self.transport.incoming_queue.get()
+        if raw_bc is None:
+            raise RuntimeError('Connetion closed')  # FIXME - gracefully handle connectcion closures
         if raw_bc:
             assert isinstance(raw_bc, BinaryChain)
         if raw_bc.prefix == self.BC_PREFIX:
@@ -206,9 +209,15 @@ class AsyncTcpConnector:
         self.func_registers = func_registers
         self.handshake_cls = handshake_cls if handshake_cls else AsyncHandshake
         self.initiator = True
+        self.unix_socket_path = None
         
     async def connect(self, host, port):
-        reader, writer = await asyncio.open_connection(host, port)
+        if port is None:
+            self.unix_socket_path = host
+        if self.unix_socket_path:
+            reader, writer = await asyncio.open_unix_connection(path=self.unix_socket_path)
+        else:
+            reader, writer = await asyncio.open_connection(host, port)
         transport = AsyncTcpAsyncTransport(reader, writer)
         await transport.start()
         handshake = self.handshake_cls(transport, self.initiator, self.engine_choices)
@@ -217,6 +226,14 @@ class AsyncTcpConnector:
             return AsyncMsgChannel(transport, initiator=self.initiator, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
         else:
             raise RuntimeError('No engine set')
+
+
+class AsyncUnixSocketConnector(AsyncTcpConnector):
+    def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
+        AsyncTcpConnector.__init__(self, engine_choices, dispatcher, func_registers, handshake_cls)
+
+    async def connect(self, path):
+        return await super().connect(path, None)
 
 
 class AsyncTcpListener:
@@ -234,16 +251,37 @@ class AsyncTcpListener:
         self.channel_tasks = dict()  # remote_address -> task
         self.connected_channels = dict()  # remote_address -> channel
         self.time_to_stop = False
+        self.unix_socket_path = None
+        self.replace_unix_socket_if_in_use = False
+        self.server_socket = None
+
+    async def _detect_unix_socket_in_use(self, socket_path):
+        try:
+            reader, writer = await asyncio.open_unix_connection(path=self.unix_socket_path)
+            writer.close()
+            await writer.wait_closed()
+            return True
+        except Exception:
+            return False
 
     async def run_server(self, bind_address, port):
-        self.address = (bind_address, port)
+        if port is None:
+            self.address = bind_address
+            self.unix_socket_path = bind_address
+        else:
+            self.address = f'{bind_address}:{port}'
         if sys.implementation.name == 'micropython':
+            if self.unix_socket_path:
+                raise RuntimeError('Unix sockets not supported on micropython')
             server = await asyncio.start_server(self._async_client_connected, bind_address, port)
             await server.wait_closed()
         else:
-            server = await asyncio.start_server(self._async_client_connected, bind_address, port, reuse_address=True)
+            if self.unix_socket_path:
+                server = await asyncio.start_unix_server(self._async_client_connected, path=self.unix_socket_path)
+            else:
+                server = await asyncio.start_server(self._async_client_connected, bind_address, port, reuse_address=True)
             try:
-                log.info(f'Listing on {self.address[0]}:{self.address[1]}')
+                log.info(f'Listing on {self.address}')
                 await server.serve_forever()
             except KeyboardInterrupt:
                 await self.shutdown_server()
@@ -262,6 +300,9 @@ class AsyncTcpListener:
         for channel in self.connected_channels.values():
             assert isinstance(channel, AsyncMsgChannel)
             await channel.shutdown_channel()
+        # cleanup unix socket if we are not replacing by default
+        if self.unix_socket_path and not self.replace_unix_socket_if_in_use:
+            os.remove(self.unix_socket_path)
         log.info('Server Shutdown Complete')
 
     async def _start_channel(self, transport: AsyncTcpTransport, remote_address):
@@ -273,6 +314,15 @@ class AsyncTcpListener:
             channel = AsyncMsgChannel(transport, initiator=False, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             await channel.start_channel()
+
+
+class AsyncUnixSocketListener(AsyncTcpListener):
+    def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
+        AsyncTcpListener.__init__(self, engine_choices, dispatcher, func_registers, handshake_cls)
+
+    async def run_server(self, path, replace_if_in_use=False):
+        self.replace_unix_socket_if_in_use = replace_if_in_use
+        await super().run_server(path, None)
 
 
 class StreamTransport(AsyncTransportBase):

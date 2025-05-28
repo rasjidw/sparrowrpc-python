@@ -19,7 +19,7 @@ except ImportError:
 from sparrowrpc.engines.v050 import ProtocolEngine
 
 from sparrowrpc.asyncio import AsyncDispatcher
-from sparrowrpc.asyncio.transports import AsyncTcpConnector
+from sparrowrpc.asyncio.transports import AsyncTcpConnector, AsyncUnixSocketConnector
 try:
     from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketConnector
 except ImportError:
@@ -131,8 +131,13 @@ async def main(args):
         uri = f'ws://127.0.0.1:9001/{engine_sig}'
         channel = await connector.connect(uri)
     else:
-        connector = AsyncTcpConnector(engine, dispatcher)
-        channel = await connector.connect('127.0.0.1', 5000)
+        if args.unix_socket:
+            path = '/tmp/sparrowrpc.sock'
+            connector = AsyncUnixSocketConnector(engine, dispatcher)
+            channel = await connector.connect(path)
+        else:
+            connector = AsyncTcpConnector(engine, dispatcher)
+            channel = await connector.connect('127.0.0.1', 5000)
     await channel.start_channel()
 
     # start of test calls
@@ -221,8 +226,10 @@ if __name__ == '__main__':
     if CborSerialiser:
         group.add_argument('--cbor', action='store_true')
 
+    conn_group = parser.add_mutually_exclusive_group()
+    conn_group.add_argument('--unix-socket', action='store_true')
     if AsyncWebsocketConnector:
-        parser.add_argument('--websocket', action='store_true')
+        conn_group.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
     root_logger = logging.getLogger()

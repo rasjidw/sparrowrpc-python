@@ -19,7 +19,7 @@ except ImportError:
     CborSerialiser = None
 
 from sparrowrpc.threaded import ThreadedDispatcher, ThreadedMsgChannel, ThreadedMsgChannelInjector, ThreadedCallbackProxy
-from sparrowrpc.threaded.transports import ThreadedTcpListener
+from sparrowrpc.threaded.transports import ThreadedTcpListener, ThreadedUnixSocketListener
 try:
     from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketListener
 except ImportError:
@@ -86,9 +86,12 @@ def division(a, b):
 
 def main():
     parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--unix-socket', action='store_true')
     if ThreadedWebsocketListener:
-        parser.add_argument('--websocket', action='store_true')
+        group.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
+
     json_engine = ProtocolEngine(JsonSerialiser())
     engine_choicies = [json_engine]
     if MsgpackSerialiser:
@@ -100,15 +103,21 @@ def main():
 
     print(f'Engine Serialisation options are: {[e.get_engine_signature() for e in engine_choicies]}')
 
-    dispatcher = ThreadedDispatcher(num_threads=5)
+    dispatcher = ThreadedDispatcher(num_threads=5)    
     if getattr(args, 'websocket', False):
         print('Running websocket server on 9001')
         websocket_server = ThreadedWebsocketListener(engine_choicies, dispatcher)
         websocket_server.run_server('0.0.0.0', 9001)
     else:
-        print('Running tcp server on 5000')
-        tcp_server = ThreadedTcpListener(engine_choicies, dispatcher)
-        tcp_server.run_server('0.0.0.0', 5000)
+        if args.unix_socket:
+            path = '/tmp/sparrowrpc.sock'
+            print(f'Listening on unix socket {path}')
+            socket_server = ThreadedUnixSocketListener(engine_choicies, dispatcher)
+            socket_server.run_server(path)
+        else:
+            print('Running tcp server on 5000')
+            tcp_server = ThreadedTcpListener(engine_choicies, dispatcher)
+            tcp_server.run_server('0.0.0.0', 5000)
     dispatcher.shutdown()
 
 
