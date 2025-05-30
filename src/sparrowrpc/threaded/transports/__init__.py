@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict, namedtuple
-import json
 import logging
 import os
 import sys
@@ -178,7 +177,7 @@ class ThreadedHandshake:
 
 class ThreadedTcpTransport(ThreadedTransportBase):
     def __init__(self, conn_socket: socket.socket, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
-        ThreadedTransportBase.__init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
+        super().__init__(max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.socket = conn_socket
 
     def _read_data(self, size):
@@ -227,7 +226,7 @@ class ThreadedTcpConnector:
 
 class ThreadedUnixSocketConnector(ThreadedTcpConnector):
     def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
-        ThreadedTcpConnector.__init__(self, engine_choices, dispatcher, func_registers, handshake_cls)
+        super().__init__(engine_choices, dispatcher, func_registers, handshake_cls)
 
     def connect(self, path):
         return super().connect(path, None)
@@ -282,7 +281,7 @@ class ThreadedTcpListener:
             # renames are atomic on unix / linux
             os.rename(temp_uds, self.unix_socket_path)
         else:
-            self.server_socket = socket.socket(socket.AF_UNSPEC, socket.SOCK_STREAM)
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             address_and_port = (bind_address, port)
             self.server_socket.bind(address_and_port)
@@ -327,7 +326,7 @@ class ThreadedTcpListener:
 
 class ThreadedUnixSocketListener(ThreadedTcpListener):
     def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
-        ThreadedTcpListener.__init__(self, engine_choices, dispatcher, func_registers, handshake_cls)
+        super().__init__(engine_choices, dispatcher, func_registers, handshake_cls)
 
     def run_server(self, path, replace_if_in_use=False):
         self.replace_unix_socket_if_in_use = replace_if_in_use
@@ -336,7 +335,7 @@ class ThreadedUnixSocketListener(ThreadedTcpListener):
 
 class StreamTransport(ThreadedTransportBase):
     def __init__(self, incoming_stream, outgoing_stream, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, read_buf_size=8192):
-        ThreadedTransportBase.__init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size)
+        super().__init__(max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size)
         self.incoming_stream = incoming_stream
         self.outgoing_stream = outgoing_stream
 

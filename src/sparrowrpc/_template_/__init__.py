@@ -407,14 +407,14 @@ class _Template_Dispatcher(_Template_DispatcherBase):
                 self.tasks.remove(task)
                 log.debug(f'Task {task!s} clean up complete')
             except KeyError:
-                print(f'ERROR: task {task!s} not found!')
+                log.error(f'ERROR: task {task!s} not found!')
 
     async def _task_done_callback(self, task, incoming_message):
         log.debug(f'**** Task {task!s} for {incoming_message} is done. ****')
         try:
             await self.completed_tasks_queue.put(task)
         except Exception:
-            print(f'ERROR: Unable to put task {task} onto completed_tasks_queue.')
+            log.error(f'ERROR: Unable to put task {task} onto completed_tasks_queue.')
     #= async end
 
     async def dispatch_incoming(self, msg_channel: _Template_MsgChannel, request: RequestBase, func_info: FuncInfo):
@@ -444,7 +444,7 @@ class _Template_Dispatcher(_Template_DispatcherBase):
 
 class _Template_MsgChannel(MsgChannelBase):
     def __init__(self, transport: _Template_TransportBase, initiator: bool, engine: ProtocolEngineBase, dispatcher: _Template_DispatcherBase, channel_tag='', func_registers=None, channel_register=None):
-        MsgChannelBase.__init__(self, initiator, engine, channel_tag, func_registers, channel_register)
+        super().__init__(initiator, engine, channel_tag, func_registers, channel_register)
         self.transport = transport
         self.dispatcher = dispatcher
         self.request = _Template_RequestProxyMaker(self)
@@ -807,7 +807,7 @@ class CallbackProxyBase:
 
 class _Template_CallbackProxy(CallbackProxyBase):
     def __init__(self, cb_param_name, callback_request_id, cb_info):
-        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id, cb_info)
+        super().__init__(cb_param_name, callback_request_id, cb_info)
         self.request_type = None  # can be changed before sending / FIXME: how we do set a default?
 
     def set_to_notification(self):
@@ -832,7 +832,7 @@ class _Template_CallbackProxy(CallbackProxyBase):
 
 class _Template_IterableCallbackProxy(CallbackProxyBase):
     def __init__(self, cb_param_name, callback_request_id, cb_info):
-        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id, cb_info)
+        super().__init__(cb_param_name, callback_request_id, cb_info)
         self._final = False
 
     def __aiter__(self):

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import defaultdict, namedtuple
-import json
 import logging
 import os
 import sys
@@ -183,7 +182,7 @@ class AsyncHandshake:
 
 class AsyncTcpTransport(AsyncTransportBase):
     def __init__(self, stream_reader: asyncio.StreamReader, stream_writer: asyncio.StreamWriter, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
-        AsyncTransportBase.__init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
+        super().__init__(max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.stream_reader = stream_reader
         self.stream_writer = stream_writer
 
@@ -230,7 +229,7 @@ class AsyncTcpConnector:
 
 class AsyncUnixSocketConnector(AsyncTcpConnector):
     def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
-        AsyncTcpConnector.__init__(self, engine_choices, dispatcher, func_registers, handshake_cls)
+        super().__init__(engine_choices, dispatcher, func_registers, handshake_cls)
 
     async def connect(self, path):
         return await super().connect(path, None)
@@ -318,7 +317,7 @@ class AsyncTcpListener:
 
 class AsyncUnixSocketListener(AsyncTcpListener):
     def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
-        AsyncTcpListener.__init__(self, engine_choices, dispatcher, func_registers, handshake_cls)
+        super().__init__(engine_choices, dispatcher, func_registers, handshake_cls)
 
     async def run_server(self, path, replace_if_in_use=False):
         self.replace_unix_socket_if_in_use = replace_if_in_use
@@ -327,7 +326,7 @@ class AsyncUnixSocketListener(AsyncTcpListener):
 
 class StreamTransport(AsyncTransportBase):
     def __init__(self, incoming_stream, outgoing_stream, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, read_buf_size=8192):
-        AsyncTransportBase.__init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size)
+        super().__init__(max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, read_buf_size)
         self.incoming_stream = incoming_stream
         self.outgoing_stream = outgoing_stream
 

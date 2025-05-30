@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 
 class _Template_WebsocketTransport(_Template_TransportBase):
     def __init__(self, websocket, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
-        _Template_TransportBase.__init__(self, max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
+        super().__init__(max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.websocket = websocket
 
     async def _read_data(self, size):

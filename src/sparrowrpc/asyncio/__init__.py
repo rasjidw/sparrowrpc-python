@@ -364,14 +364,14 @@ class AsyncDispatcher(AsyncDispatcherBase):
                 self.tasks.remove(task)
                 log.debug(f'Task {task!s} clean up complete')
             except KeyError:
-                print(f'ERROR: task {task!s} not found!')
+                log.error(f'ERROR: task {task!s} not found!')
 
     async def _task_done_callback(self, task, incoming_message):
         log.debug(f'**** Task {task!s} for {incoming_message} is done. ****')
         try:
             await self.completed_tasks_queue.put(task)
         except Exception:
-            print(f'ERROR: Unable to put task {task} onto completed_tasks_queue.')
+            log.error(f'ERROR: Unable to put task {task} onto completed_tasks_queue.')
 
     async def dispatch_incoming(self, msg_channel: AsyncMsgChannel, request: RequestBase, func_info: FuncInfo):
         queue_item = (msg_channel, request, func_info)
@@ -393,7 +393,7 @@ class AsyncDispatcher(AsyncDispatcherBase):
 
 class AsyncMsgChannel(MsgChannelBase):
     def __init__(self, transport: AsyncTransportBase, initiator: bool, engine: ProtocolEngineBase, dispatcher: AsyncDispatcherBase, channel_tag='', func_registers=None, channel_register=None):
-        MsgChannelBase.__init__(self, initiator, engine, channel_tag, func_registers, channel_register)
+        super().__init__(initiator, engine, channel_tag, func_registers, channel_register)
         self.transport = transport
         self.dispatcher = dispatcher
         self.request = AsyncRequestProxyMaker(self)
@@ -725,7 +725,7 @@ class CallbackProxyBase:
 
 class AsyncCallbackProxy(CallbackProxyBase):
     def __init__(self, cb_param_name, callback_request_id, cb_info):
-        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id, cb_info)
+        super().__init__(cb_param_name, callback_request_id, cb_info)
         self.request_type = None  # can be changed before sending / FIXME: how we do set a default?
 
     def set_to_notification(self):
@@ -750,7 +750,7 @@ class AsyncCallbackProxy(CallbackProxyBase):
 
 class AsyncIterableCallbackProxy(CallbackProxyBase):
     def __init__(self, cb_param_name, callback_request_id, cb_info):
-        CallbackProxyBase.__init__(self, cb_param_name, callback_request_id, cb_info)
+        super().__init__(cb_param_name, callback_request_id, cb_info)
         self._final = False
 
     def __aiter__(self):

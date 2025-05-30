@@ -6,7 +6,7 @@ from typing import Any
 
 try:
     if sys.implementation.name == 'micropython':
-        import umsgpack as msgpack  # micropython
+        import umsgpack as msgpack  # micropython  # type: ignore
     else:
         import msgpack
     have_msgpack = True
