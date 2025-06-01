@@ -7,13 +7,16 @@
 
 
 import logging
+import signal
 
+from threading import Thread
 from websockets.sync import client
 from websockets.sync import server
 
 import websockets.exceptions
 
 from ...bases import ProtocolEngineBase
+from ...lib import SignalHandlerInstaller
 from ...threaded import ThreadedMsgChannel
 from ..transports import ThreadedTransportBase
 
@@ -68,16 +71,40 @@ class ThreadedWebsocketListener:
         self.func_registers = func_registers
         self.initiator = False
         self.websocket_server = None
+        self.listening_thread = None
         self.connected_channels = dict()  # remote_address -> channel
         self.time_to_stop = False
 
     def run_server(self, bind_address, port):
+        self.listening_thread = Thread(target=self._run_server, args=(bind_address, port))
+        self.listening_thread.start()
+
+    def _run_server(self, bind_address, port):
         with server.serve(self._websocket_handler, bind_address, port) as self.websocket_server: 
             log.info(f'Listing on {bind_address}:{port}')
             try:
                 self.websocket_server.serve_forever()
-            except KeyboardInterrupt:
-                self.shutdown_server()
+            except asyncio.CancelledError as e:
+                pass  # this seems to be raised on server close. Don't re-raise it so we can shut down cleanly.
+
+    def _signal_handler(self, signum, frame):
+        signame = signal.Signals(signum).name
+        log.info(f'Stop listening signal handler called with signal {signame} ({signum})')
+        self.stop_listening()
+
+    def stop_listening(self):
+        self.websocket_server.shutdown()
+
+    def block(self, signals=None):
+        signal_handler_installer = SignalHandlerInstaller(signals)
+        log.debug('Installing signal handlers')
+        signal_handler_installer.install(self._signal_handler)
+        try:
+            self.listening_thread.join()
+        finally:
+            log.debug('Removing signal handlers')
+            signal_handler_installer.remove()
+        self.shutdown_server()
 
     def shutdown_server(self):
         log.info('Starting Server Shutdown')
@@ -85,7 +112,6 @@ class ThreadedWebsocketListener:
         for channel in self.connected_channels.values():
             assert isinstance(channel, ThreadedMsgChannel)
             channel.shutdown_channel()
-        self.websocket_server.shutdown()
         log.info('Server Shutdown Complete')
 
     def _websocket_handler(self, client_websocket):

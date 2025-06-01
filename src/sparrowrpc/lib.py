@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import logging
 import signal
 import sys
 from typing import Optional, Iterable
-
-
-log = logging.getLogger(__name__)
 
 
 class SignalHandlerInstaller:
