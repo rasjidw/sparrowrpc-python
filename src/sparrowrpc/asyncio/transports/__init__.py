@@ -267,8 +267,10 @@ class AsyncTcpListener:
         except Exception:
             return False
 
-    async def run_server(self, bind_address, port):
+    async def run_server(self, bind_address, port, block=True):
         self.listening_task = asyncio.create_task(self._run_server(bind_address, port))
+        if block:
+            self.block()
 
     async def _run_server(self, bind_address, port):
         if port is None:

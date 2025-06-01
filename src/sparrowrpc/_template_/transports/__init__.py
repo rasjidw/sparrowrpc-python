@@ -308,7 +308,7 @@ class _Template_TcpListener:
             return False
         #= async end
 
-    async def run_server(self, bind_address, port):
+    async def run_server(self, bind_address, port, block=True):
         #= threaded start
         self.listening_thread = Thread(target=self._run_server, args=(bind_address, port))
         self.listening_thread.start()
@@ -316,6 +316,8 @@ class _Template_TcpListener:
         #= async start
         self.listening_task = asyncio.create_task(self._run_server(bind_address, port))
         #= async end
+        if block:
+            self.block()
 
     async def _run_server(self, bind_address, port):
         if port is None:

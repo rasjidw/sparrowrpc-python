@@ -149,12 +149,10 @@ async def main():
             print(f'Listening on unix socket {path}')
             socket_server = AsyncUnixSocketListener(engine_choicies, dispatcher)
             await socket_server.run_server(path)
-            await socket_server.block()
         else:
             print('Running tcp server on 5000')
             tcp_server = AsyncTcpListener(engine_choicies, dispatcher)
             await tcp_server.run_server('0.0.0.0', 5000)
-            await tcp_server.block()
     await dispatcher.shutdown()
 
 

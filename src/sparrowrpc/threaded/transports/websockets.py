@@ -75,9 +75,11 @@ class ThreadedWebsocketListener:
         self.connected_channels = dict()  # remote_address -> channel
         self.time_to_stop = False
 
-    def run_server(self, bind_address, port):
+    def run_server(self, bind_address, port, block=True):
         self.listening_thread = Thread(target=self._run_server, args=(bind_address, port))
         self.listening_thread.start()
+        if block:
+            self.block()
 
     def _run_server(self, bind_address, port):
         with server.serve(self._websocket_handler, bind_address, port) as self.websocket_server: 

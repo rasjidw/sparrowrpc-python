@@ -115,12 +115,10 @@ def main():
             print(f'Listening on unix socket {path}')
             socket_server = ThreadedUnixSocketListener(engine_choicies, dispatcher)
             socket_server.run_server(path)
-            socket_server.block()
         else:
             print('Running tcp server on 5000')
             tcp_server = ThreadedTcpListener(engine_choicies, dispatcher)
             tcp_server.run_server('0.0.0.0', 5000)
-            tcp_server.block()
     dispatcher.shutdown()
 
 

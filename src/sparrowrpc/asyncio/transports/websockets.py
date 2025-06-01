@@ -75,8 +75,10 @@ class AsyncWebsocketListener:
         self.connected_channels = dict()  # remote_address -> channel
         self.time_to_stop = False
 
-    async def run_server(self, bind_address, port):
+    async def run_server(self, bind_address, port, block=True):
         self.listening_task = asyncio.create_task(self._run_server(bind_address, port))
+        if block:
+            self.block()
 
     async def _run_server(self, bind_address, port):
         async with server.serve(self._websocket_handler, bind_address, port) as self.websocket_server: 

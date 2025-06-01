@@ -264,9 +264,11 @@ class ThreadedTcpListener:
         except Exception:
             return False
 
-    def run_server(self, bind_address, port):
+    def run_server(self, bind_address, port, block=True):
         self.listening_thread = Thread(target=self._run_server, args=(bind_address, port))
         self.listening_thread.start()
+        if block:
+            self.block()
 
     def _run_server(self, bind_address, port):
         if port is None:
