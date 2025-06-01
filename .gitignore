@@ -4,4 +4,4 @@ dist
 *.egg-info
 venv
 zz*
-
+*.stdout.txt
