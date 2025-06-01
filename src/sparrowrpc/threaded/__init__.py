@@ -312,11 +312,11 @@ class ThreadedDispatcher(ThreadedDispatcherBase):
         self.incoming_queue = Queue(queue_size)
         self.time_to_stop = False
 
-        self.threads = [Thread(target=self._worker) for _ in range(num_threads)]
+        self.threads = [Thread(target=self._dispatch_worker) for _ in range(num_threads)]
         for t in self.threads:
             t.start()
 
-    def _worker(self):
+    def _dispatch_worker(self):
         log.debug(f'Starting dispatch worker in thread {get_thread_or_task_name()}.')
         while not self.time_to_stop:
             try:
@@ -330,12 +330,12 @@ class ThreadedDispatcher(ThreadedDispatcherBase):
         queue_item = (msg_channel, request, func_info)
         self.incoming_queue.put(queue_item)
 
-    def shutdown(self, timeout=0):
+    def shutdown(self, timeout=10):  # FIXME: What timeout do we really want?
         log.debug('Shutting down dispatcher')
         self.time_to_stop = True
         for t in self.threads:
             assert isinstance(t, Thread)
-            t.join(timeout=timeout)
+            t.join(timeout=timeout)   # FIXME: What to do with workers still running after timeout
         log.debug('Dispatcher shut down')
 
 

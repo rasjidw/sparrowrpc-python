@@ -377,7 +377,7 @@ class AsyncDispatcher(AsyncDispatcherBase):
         queue_item = (msg_channel, request, func_info)
         await self.incoming_queue.put(queue_item)
 
-    async def shutdown(self, timeout=0):
+    async def shutdown(self, timeout=10):  # FIXME: What timeout do we really want?
         log.debug('Shutting down dispatcher')
         self.time_to_stop = True
         await self.task_fetcher_task

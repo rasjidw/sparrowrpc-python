@@ -361,13 +361,13 @@ class _Template_Dispatcher(_Template_DispatcherBase):
         self.completed_task_awaiter_task = asyncio.create_task(self._cleanup_completed_tasks())
         #= async end
         #= threaded start
-        self.threads = [Thread(target=self._worker) for _ in range(num_threads)]
+        self.threads = [Thread(target=self._dispatch_worker) for _ in range(num_threads)]
         for t in self.threads:
             t.start()
         #= threaded end
 
     #= threaded start
-    def _worker(self):
+    def _dispatch_worker(self):
         log.debug(f'Starting dispatch worker in thread {get_thread_or_task_name()}.')
         while not self.time_to_stop:
             try:
@@ -421,13 +421,13 @@ class _Template_Dispatcher(_Template_DispatcherBase):
         queue_item = (msg_channel, request, func_info)
         await self.incoming_queue.put(queue_item)
 
-    async def shutdown(self, timeout=0):
+    async def shutdown(self, timeout=10):  # FIXME: What timeout do we really want?
         log.debug('Shutting down dispatcher')
         self.time_to_stop = True
         #= threaded start
         for t in self.threads:
             assert isinstance(t, Thread)
-            t.join(timeout=timeout)
+            t.join(timeout=timeout)   # FIXME: What to do with workers still running after timeout
         #= threaded end
         #= async start
         await self.task_fetcher_task
