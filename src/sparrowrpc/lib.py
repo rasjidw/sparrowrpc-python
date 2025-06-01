@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import signal
+import socket
 import sys
 from typing import Optional, Iterable
 
@@ -23,3 +24,14 @@ class SignalHandlerInstaller:
     def remove(self):
         for sig in self.signals:
             signal.signal(sig, self.saved_handlers[sig])
+
+
+
+def detect_unix_socket_in_use(socket_path):
+    detecting_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        detecting_socket.connect(socket_path)
+        detecting_socket.close()
+        return True
+    except Exception:
+        return False

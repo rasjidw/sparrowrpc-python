@@ -31,7 +31,7 @@ from binarychain import BinaryChain, ChainReader
 
 from ...bases import ProtocolEngineBase
 from ...engines import hs
-from ...lib import SignalHandlerInstaller
+from ...lib import SignalHandlerInstaller, detect_unix_socket_in_use
 from ...messages import IncomingRequest, IncomingResponse, OutgoingRequest, OutgoingResponse
 
 from ..._template_ import _Template_MsgChannel, _Template_TransportBase
@@ -328,7 +328,7 @@ class _Template_TcpListener:
         #= threaded start
         if self.unix_socket_path:
             if os.path.exists(self.unix_socket_path) and not self.replace_unix_socket_if_in_use:
-                if self._detect_unix_socket_in_use(self.unix_socket_path):
+                if detect_unix_socket_in_use(self.unix_socket_path):
                     raise OSError(f'Unix Socket {self.unix_socket_path} in use')
                 
             # get a temporary name in the same directory as the final path

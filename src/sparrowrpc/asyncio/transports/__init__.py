@@ -34,7 +34,7 @@ from binarychain import BinaryChain, ChainReader
 
 from ...bases import ProtocolEngineBase
 from ...engines import hs
-from ...lib import SignalHandlerInstaller
+from ...lib import SignalHandlerInstaller, detect_unix_socket_in_use
 from ...messages import IncomingRequest, IncomingResponse, OutgoingRequest, OutgoingResponse
 
 from ...asyncio import AsyncMsgChannel, AsyncTransportBase
