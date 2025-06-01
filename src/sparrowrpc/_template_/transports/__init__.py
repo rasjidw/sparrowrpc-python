@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict, namedtuple
 import logging
 import os
+import signal
 import sys
 import tempfile
 
@@ -30,6 +31,7 @@ from binarychain import BinaryChain, ChainReader
 
 from ...bases import ProtocolEngineBase
 from ...engines import hs
+from ...lib import SignalHandlerInstaller
 from ...messages import IncomingRequest, IncomingResponse, OutgoingRequest, OutgoingResponse
 
 from ..._template_ import _Template_MsgChannel, _Template_TransportBase
@@ -278,10 +280,13 @@ class _Template_TcpListener:
         self.channel_threads = dict()  # remote_address -> thread  #= threaded
         self.channel_tasks = dict()  # remote_address -> task  #= async
         self.connected_channels = dict()  # remote_address -> channel
-        self.time_to_stop = False
+        self.listening_thread = None  #= threaded
+        self.listening_task = None  #= async
+        self.time_to_stop = Event()
         self.unix_socket_path = None
         self.replace_unix_socket_if_in_use = False
         self.server_socket = None
+        self.async_server = None
 
     async def _detect_unix_socket_in_use(self, socket_path):
         #= threaded start
@@ -304,6 +309,15 @@ class _Template_TcpListener:
         #= async end
 
     async def run_server(self, bind_address, port):
+        #= threaded start
+        self.listening_thread = Thread(target=self._run_server, args=(bind_address, port))
+        self.listening_thread.start()
+        #= threaded end
+        #= async start
+        self.listening_task = asyncio.create_task(self._run_server(bind_address, port))
+        #= async end
+
+    async def _run_server(self, bind_address, port):
         if port is None:
             self.address = bind_address
             self.unix_socket_path = bind_address
@@ -330,34 +344,33 @@ class _Template_TcpListener:
             address_and_port = (bind_address, port)
             self.server_socket.bind(address_and_port)
         self.server_socket.listen(5)
+        self.server_socket.settimeout(1)
         log.info(f'Listing on {self.address}')
-        try:
-            while not self.time_to_stop:
+        while not self.time_to_stop.is_set():
+            try:
                 client_socket, remote_address = self.server_socket.accept()
-                log.info(f'Accepted connection from {remote_address}')
-                transport = _Template_TcpTransport(client_socket)
-                channel_thread = Thread(target=self._start_channel, args=(transport, remote_address))
-                self.channel_threads[remote_address] = channel_thread
-                channel_thread.start()
-        except KeyboardInterrupt:
-            self.shutdown_server()
+            except socket.timeout:
+                continue
+
+            log.info(f'Accepted connection from {remote_address}')
+            transport = _Template_TcpTransport(client_socket)
+            channel_thread = Thread(target=self._start_channel, args=(transport, remote_address))
+            self.channel_threads[remote_address] = channel_thread
+            channel_thread.start()
         #= threaded end
         #= async start
         if sys.implementation.name == 'micropython':
             if self.unix_socket_path:
                 raise RuntimeError('Unix sockets not supported on micropython')
-            server = await asyncio.start_server(self._async_client_connected, bind_address, port)
-            await server.wait_closed()
+            self.async_server = await asyncio.start_server(self._async_client_connected, bind_address, port)
+            await self.async_server.wait_closed()
         else:
             if self.unix_socket_path:
-                server = await asyncio.start_unix_server(self._async_client_connected, path=self.unix_socket_path)
+                self.async_server = await asyncio.start_unix_server(self._async_client_connected, path=self.unix_socket_path)
             else:
-                server = await asyncio.start_server(self._async_client_connected, bind_address, port, reuse_address=True)
-            try:
-                log.info(f'Listing on {self.address}')
-                await server.serve_forever()
-            except KeyboardInterrupt:
-                await self.shutdown_server()
+                self.async_server = await asyncio.start_server(self._async_client_connected, bind_address, port, reuse_address=True)
+            log.info(f'Listing on {self.address}')
+            await self.async_server.wait_closed()
         #= async end
 
     #= async start
@@ -372,7 +385,14 @@ class _Template_TcpListener:
     #= async end
     async def shutdown_server(self):
         log.info('Starting Server Shutdown')
-        self.time_to_stop = True
+        #= threaded start
+        self.time_to_stop.set()
+        self.listening_thread.join()
+        #= threaded end
+        #= async start
+        self.async_server.close()
+        await self.async_server.wait_closed()
+        #= async end
         for channel in self.connected_channels.values():
             assert isinstance(channel, _Template_MsgChannel)
             await channel.shutdown_channel()
@@ -396,6 +416,27 @@ class _Template_TcpListener:
             channel = _Template_MsgChannel(transport, initiator=False, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             await channel.start_channel()
+
+    def _signal_handler(self, signum, frame):
+        signame = signal.Signals(signum).name
+        log.info(f'Signal handler called with signal {signame} ({signum})')
+        self.time_to_stop.set()  #= threaded
+        self.async_server.close()  #= async
+
+    async def block(self, signals=None):
+        signal_handler_installer = SignalHandlerInstaller(signals)
+        signal_handler_installer.install(self._signal_handler)
+        try:
+            #= threaded start
+            self.time_to_stop.wait()
+            self.listening_thread.join()
+            #= threaded end
+            #= async start
+            await self.listening_task
+            #= async end
+        finally:
+            signal_handler_installer.remove()
+        await self.shutdown_server()
 
 
 class _Template_UnixSocketListener(_Template_TcpListener):

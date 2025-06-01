@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict, namedtuple
 import logging
 import os
+import signal
 import sys
 import tempfile
 
@@ -29,6 +30,7 @@ from binarychain import BinaryChain, ChainReader
 
 from ...bases import ProtocolEngineBase
 from ...engines import hs
+from ...lib import SignalHandlerInstaller
 from ...messages import IncomingRequest, IncomingResponse, OutgoingRequest, OutgoingResponse
 
 from ...threaded import ThreadedMsgChannel, ThreadedTransportBase
@@ -246,10 +248,12 @@ class ThreadedTcpListener:
         self.address = None
         self.channel_threads = dict()  # remote_address -> thread
         self.connected_channels = dict()  # remote_address -> channel
-        self.time_to_stop = False
+        self.listening_thread = None
+        self.time_to_stop = Event()
         self.unix_socket_path = None
         self.replace_unix_socket_if_in_use = False
         self.server_socket = None
+        self.async_server = None
 
     def _detect_unix_socket_in_use(self, socket_path):
         detecting_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -261,6 +265,10 @@ class ThreadedTcpListener:
             return False
 
     def run_server(self, bind_address, port):
+        self.listening_thread = Thread(target=self._run_server, args=(bind_address, port))
+        self.listening_thread.start()
+
+    def _run_server(self, bind_address, port):
         if port is None:
             self.address = bind_address
             self.unix_socket_path = bind_address
@@ -286,21 +294,24 @@ class ThreadedTcpListener:
             address_and_port = (bind_address, port)
             self.server_socket.bind(address_and_port)
         self.server_socket.listen(5)
+        self.server_socket.settimeout(1)
         log.info(f'Listing on {self.address}')
-        try:
-            while not self.time_to_stop:
+        while not self.time_to_stop.is_set():
+            try:
                 client_socket, remote_address = self.server_socket.accept()
-                log.info(f'Accepted connection from {remote_address}')
-                transport = ThreadedTcpTransport(client_socket)
-                channel_thread = Thread(target=self._start_channel, args=(transport, remote_address))
-                self.channel_threads[remote_address] = channel_thread
-                channel_thread.start()
-        except KeyboardInterrupt:
-            self.shutdown_server()
+            except socket.timeout:
+                continue
+
+            log.info(f'Accepted connection from {remote_address}')
+            transport = ThreadedTcpTransport(client_socket)
+            channel_thread = Thread(target=self._start_channel, args=(transport, remote_address))
+            self.channel_threads[remote_address] = channel_thread
+            channel_thread.start()
 
     def shutdown_server(self):
         log.info('Starting Server Shutdown')
-        self.time_to_stop = True
+        self.time_to_stop.set()
+        self.listening_thread.join()
         for channel in self.connected_channels.values():
             assert isinstance(channel, ThreadedMsgChannel)
             channel.shutdown_channel()
@@ -322,6 +333,21 @@ class ThreadedTcpListener:
             channel = ThreadedMsgChannel(transport, initiator=False, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             channel.start_channel()
+
+    def _signal_handler(self, signum, frame):
+        signame = signal.Signals(signum).name
+        log.info(f'Signal handler called with signal {signame} ({signum})')
+        self.time_to_stop.set()
+
+    def block(self, signals=None):
+        signal_handler_installer = SignalHandlerInstaller(signals)
+        signal_handler_installer.install(self._signal_handler)
+        try:
+            self.time_to_stop.wait()
+            self.listening_thread.join()
+        finally:
+            signal_handler_installer.remove()
+        self.shutdown_server()
 
 
 class ThreadedUnixSocketListener(ThreadedTcpListener):
