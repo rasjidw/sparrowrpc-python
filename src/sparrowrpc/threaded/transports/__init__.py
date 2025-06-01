@@ -331,7 +331,6 @@ class ThreadedTcpListener:
         handshake = self.handshake_cls(transport, self.initiator, self.engine_choices)
         handshake.start_handshake()
         if handshake.engine_selected:
-            #transport = ThreadedTcpTransport(client_socket)
             channel = ThreadedMsgChannel(transport, initiator=False, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             channel.start_channel()
@@ -398,11 +397,11 @@ class SubprocessRunnerBase(ABC):
 
 class ParentSubprocessRunner(SubprocessRunnerBase):
     def get_channel(self, child_stdin, child_stdout):
-        transport = StreamTransport(outgoing_stream=child_stdin, incoming_stream=child_stdout, engine=self.engine)
+        transport = StreamTransport(outgoing_stream=child_stdin, incoming_stream=child_stdout)
         return ThreadedMsgChannel(transport, initiator=True, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
 class ChildSubprocessRunner(SubprocessRunnerBase):
     def get_channel(self):
-        transport = StreamTransport(sys.stdin.buffer, sys.stdout.buffer, self.engine)
+        transport = StreamTransport(sys.stdin.buffer, sys.stdout.buffer)
         return ThreadedMsgChannel(transport, initiator=False, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)

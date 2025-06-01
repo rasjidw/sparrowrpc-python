@@ -108,7 +108,6 @@ def main():
         print('Running websocket server on 9001')
         websocket_server = ThreadedWebsocketListener(engine_choicies, dispatcher)
         websocket_server.run_server('0.0.0.0', 9001)
-        websocket_server.block()
     else:
         if args.unix_socket:
             path = '/tmp/sparrowrpc.sock'

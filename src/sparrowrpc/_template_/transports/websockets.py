@@ -83,7 +83,7 @@ class _Template_WebsocketListener:
         self.listening_task = asyncio.create_task(self._run_server(bind_address, port))
         #= async end
         if block:
-            self.block()
+            await self.block()
 
     async def _run_server(self, bind_address, port):
         async with server.serve(self._websocket_handler, bind_address, port) as self.websocket_server: 

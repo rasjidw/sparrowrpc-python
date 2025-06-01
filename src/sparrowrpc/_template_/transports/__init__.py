@@ -317,7 +317,7 @@ class _Template_TcpListener:
         self.listening_task = asyncio.create_task(self._run_server(bind_address, port))
         #= async end
         if block:
-            self.block()
+            await self.block()
 
     async def _run_server(self, bind_address, port):
         if port is None:
@@ -392,8 +392,11 @@ class _Template_TcpListener:
         self.listening_thread.join()
         #= threaded end
         #= async start
-        self.async_server.close()
-        await self.async_server.wait_closed()
+        self.listening_task.cancel()
+        try:
+            await self.listening_task
+        except asyncio.CancelledError:
+            pass
         #= async end
         for channel in self.connected_channels.values():
             assert isinstance(channel, _Template_MsgChannel)
@@ -414,7 +417,6 @@ class _Template_TcpListener:
         handshake = self.handshake_cls(transport, self.initiator, self.engine_choices)
         await handshake.start_handshake()
         if handshake.engine_selected:
-            #transport = _Template_TcpTransport(client_socket)
             channel = _Template_MsgChannel(transport, initiator=False, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             await channel.start_channel()
@@ -423,7 +425,9 @@ class _Template_TcpListener:
         signame = signal.Signals(signum).name
         log.info(f'Signal handler called with signal {signame} ({signum})')
         self.time_to_stop.set()  #= threaded
-        self.async_server.close()  #= async
+        #= async start
+        self.listening_task.cancel()
+        #= async end
 
     async def block(self, signals=None):
         signal_handler_installer = SignalHandlerInstaller(signals)
@@ -434,7 +438,10 @@ class _Template_TcpListener:
             self.listening_thread.join()
             #= threaded end
             #= async start
-            await self.listening_task
+            try:
+                await self.listening_task
+            except asyncio.CancelledError:
+                pass
             #= async end
         finally:
             signal_handler_installer.remove()
@@ -487,11 +494,11 @@ class SubprocessRunnerBase(ABC):
 
 class ParentSubprocessRunner(SubprocessRunnerBase):
     async def get_channel(self, child_stdin, child_stdout):
-        transport = StreamTransport(outgoing_stream=child_stdin, incoming_stream=child_stdout, engine=self.engine)
+        transport = StreamTransport(outgoing_stream=child_stdin, incoming_stream=child_stdout)
         return _Template_MsgChannel(transport, initiator=True, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
 class ChildSubprocessRunner(SubprocessRunnerBase):
     def get_channel(self):
-        transport = StreamTransport(sys.stdin.buffer, sys.stdout.buffer, self.engine)
+        transport = StreamTransport(sys.stdin.buffer, sys.stdout.buffer)
         return _Template_MsgChannel(transport, initiator=False, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)

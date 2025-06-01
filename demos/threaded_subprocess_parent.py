@@ -3,6 +3,7 @@
 import argparse
 import logging
 import os
+import pathlib
 import subprocess
 import sys
 import threading
@@ -60,7 +61,8 @@ def main(debug, use_msgpack):
     dispatcher = ThreadedDispatcher(num_threads=5)
 
     transport = ParentSubprocessRunner(engine, dispatcher)
-    args = ['./threaded_subprocess_child.py']
+    demo_dir = pathlib.Path(__file__).parent
+    args = [demo_dir / 'threaded_subprocess_child.py']
     if debug:
         args.append('--debug')
     if use_msgpack:

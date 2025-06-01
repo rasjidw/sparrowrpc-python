@@ -33,6 +33,7 @@ class FunctionRegister:
     def __init__(self, namespace: str = None):
         self.namespace = namespace if namespace else ''
         self._register = dict()   # dict[namespace][target_name] -> FuncInfo
+        
     def register_func(self, func, target_name=None, namespace=None, auth_groups=None, multipart_response=False, injectable_params=None, non_blocking=False):
         namespace = '' if namespace is None else namespace
         if not isinstance(namespace, str):

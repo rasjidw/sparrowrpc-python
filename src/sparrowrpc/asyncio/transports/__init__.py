@@ -270,7 +270,7 @@ class AsyncTcpListener:
     async def run_server(self, bind_address, port, block=True):
         self.listening_task = asyncio.create_task(self._run_server(bind_address, port))
         if block:
-            self.block()
+            await self.block()
 
     async def _run_server(self, bind_address, port):
         if port is None:
@@ -301,8 +301,11 @@ class AsyncTcpListener:
 
     async def shutdown_server(self):
         log.info('Starting Server Shutdown')
-        self.async_server.close()
-        await self.async_server.wait_closed()
+        self.listening_task.cancel()
+        try:
+            await self.listening_task
+        except asyncio.CancelledError:
+            pass
         for channel in self.connected_channels.values():
             assert isinstance(channel, AsyncMsgChannel)
             await channel.shutdown_channel()
@@ -316,7 +319,6 @@ class AsyncTcpListener:
         handshake = self.handshake_cls(transport, self.initiator, self.engine_choices)
         await handshake.start_handshake()
         if handshake.engine_selected:
-            #transport = AsyncTcpTransport(client_socket)
             channel = AsyncMsgChannel(transport, initiator=False, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
             self.connected_channels[remote_address] = channel
             await channel.start_channel()
@@ -324,13 +326,16 @@ class AsyncTcpListener:
     def _signal_handler(self, signum, frame):
         signame = signal.Signals(signum).name
         log.info(f'Signal handler called with signal {signame} ({signum})')
-        self.async_server.close()
+        self.listening_task.cancel()
 
     async def block(self, signals=None):
         signal_handler_installer = SignalHandlerInstaller(signals)
         signal_handler_installer.install(self._signal_handler)
         try:
-            await self.listening_task
+            try:
+                await self.listening_task
+            except asyncio.CancelledError:
+                pass
         finally:
             signal_handler_installer.remove()
         await self.shutdown_server()
@@ -382,11 +387,11 @@ class SubprocessRunnerBase(ABC):
 
 class ParentSubprocessRunner(SubprocessRunnerBase):
     async def get_channel(self, child_stdin, child_stdout):
-        transport = StreamTransport(outgoing_stream=child_stdin, incoming_stream=child_stdout, engine=self.engine)
+        transport = StreamTransport(outgoing_stream=child_stdin, incoming_stream=child_stdout)
         return AsyncMsgChannel(transport, initiator=True, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
 class ChildSubprocessRunner(SubprocessRunnerBase):
     def get_channel(self):
-        transport = StreamTransport(sys.stdin.buffer, sys.stdout.buffer, self.engine)
+        transport = StreamTransport(sys.stdin.buffer, sys.stdout.buffer)
         return AsyncMsgChannel(transport, initiator=False, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
