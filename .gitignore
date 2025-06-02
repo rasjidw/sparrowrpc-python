@@ -5,3 +5,4 @@ dist
 venv
 zz*
 *.stdout.txt
+.coverage*
