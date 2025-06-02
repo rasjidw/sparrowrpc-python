@@ -1,10 +1,9 @@
-import os
 import pathlib
 import sys
 import subprocess
 import time
 
-import listening_server_code
+import threaded_listening_server_code
 
 
 
@@ -50,38 +49,4 @@ class ListeningServerRunner:
                     self.f_err.close()
 
 
-listening_server_runner = ListeningServerRunner(listening_server_code.__file__)
-
-
-def pytest_configure(config):
-    """
-    Allows plugins and conftest files to perform initial configuration.
-    This hook is called for every plugin and initial conftest
-    file after command line options have been parsed.
-    """
-    print('In PyTest Configure')
-    listening_server_runner.start()
-
-
-def pytest_sessionstart(session):
-    """
-    Called after the Session object has been created and
-    before performing collection and entering the run test loop.
-    """
-    print('In PyTest Session Start')
-    
-
-def pytest_sessionfinish(session, exitstatus):
-    """
-    Called after whole test run finished, right before
-    returning the exit status to the system.
-    """
-    print('In PyTest Session End')
-    
-
-def pytest_unconfigure(config):
-    """
-    called before test process is exited.
-    """
-    print('In PyTest Unconfigure')
-    listening_server_runner.stop()
+listening_server_runner = ListeningServerRunner(threaded_listening_server_code.__file__)

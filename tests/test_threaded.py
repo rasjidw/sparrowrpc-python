@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from listening_server_code import SOCK_PATH, MULTPART_RESPONSE_ITEMS
+from threaded_listening_server_code import SOCK_PATH, MULTPART_RESPONSE_ITEMS
+from threaded_listening_server_runner import listening_server_runner
+
 
 from sparrowrpc.serialisers import JsonSerialiser, MsgpackSerialiser, CborSerialiser
 from sparrowrpc.engines import v050
@@ -11,6 +13,13 @@ from sparrowrpc.exceptions import CalleeException, CallerException
 
 from sparrowrpc.threaded import ThreadedDispatcher
 from sparrowrpc.threaded.transports import ThreadedUnixSocketConnector
+
+
+@pytest.fixture(scope="module", autouse=True)
+def server():
+    listening_server_runner.start()
+    yield None
+    listening_server_runner.stop()
 
 
 @pytest.fixture(scope="module", params=[JsonSerialiser(), MsgpackSerialiser(), CborSerialiser()])
