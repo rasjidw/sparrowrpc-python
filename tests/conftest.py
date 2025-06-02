@@ -29,6 +29,8 @@ class ListeningServerRunner:
                 self.f_err = open(self.stderr_filename, 'w')
             self.sub_proc = subprocess.Popen(args, stdout=self.f_out, stderr=self.f_err)
             print(f'** Starting subprocess with pid {self.sub_proc.pid}')
+            print(f'Sleeping to enable the listening socket to appear')
+            time.sleep(2)
 
     def stop(self):
         if self.sub_proc:

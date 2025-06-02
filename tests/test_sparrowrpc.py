@@ -8,27 +8,16 @@ import pytest
 from listening_server_code import SOCK_PATH
 
 from sparrowrpc.lib import detect_unix_socket_in_use
-from sparrowrpc.serialisers import JsonSerialiser
+from sparrowrpc.serialisers import JsonSerialiser, MsgpackSerialiser, CborSerialiser
 from sparrowrpc.engines import v050
 
 from sparrowrpc.threaded import ThreadedDispatcher
 from sparrowrpc.threaded.transports import ThreadedUnixSocketConnector
 
 
-@pytest.fixture(scope="module")
-def channel():
-    sleep(2)
-    # wait for up to 5 seconds for the socket to become active
-    # for _ in range(10):
-    #     if detect_unix_socket_in_use(SOCK_PATH):
-    #         break
-    #     else:
-    #         print('SLEEPING....')
-    #         sleep(0.5)
-    # else:
-    #     raise RuntimeError('Socket not active')
-    
-    serialiser = JsonSerialiser()
+@pytest.fixture(scope="module", params=[JsonSerialiser(), MsgpackSerialiser(), CborSerialiser()])
+def channel(request):
+    serialiser = request.param
     engine = v050.ProtocolEngine(serialiser)
     dispatcher = ThreadedDispatcher(num_threads=5)
     connector = ThreadedUnixSocketConnector(engine, dispatcher)
