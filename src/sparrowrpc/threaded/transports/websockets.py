@@ -83,11 +83,8 @@ class ThreadedWebsocketListener:
 
     def _run_server(self, bind_address, port):
         with server.serve(self._websocket_handler, bind_address, port) as self.websocket_server: 
-            log.info(f'Listing on {bind_address}:{port}')
-            try:
-                self.websocket_server.serve_forever()
-            except asyncio.CancelledError as e:
-                pass  # this seems to be raised on server close. Don't re-raise it so we can shut down cleanly.
+            log.info(f'Websocket Listing on {bind_address}:{port}')
+            self.websocket_server.serve_forever()
 
     def _signal_handler(self, signum, frame):
         signame = signal.Signals(signum).name
@@ -110,6 +107,9 @@ class ThreadedWebsocketListener:
 
     def shutdown_server(self):
         log.info('Starting Server Shutdown')
+        self.stop_listening()
+        self.listening_thread.join()
+        
         self.time_to_stop = True
         for channel in self.connected_channels.values():
             assert isinstance(channel, ThreadedMsgChannel)

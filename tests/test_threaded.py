@@ -46,7 +46,7 @@ def threaded_server(ports: Ports):
     listening_server_runner.stop()
 
 
-connect_to_list = port_names.copy()[:1]  # FIXME: not done async server side yet, and websocket not working...
+connect_to_list = port_names.copy()[:2]  # FIXME: not done async server side yet
 if sys.platform != 'win32':
     connect_to_list.append('uds')
 

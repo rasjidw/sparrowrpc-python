@@ -92,7 +92,7 @@ def main():
         servers.append(tcp_server)
     if ws_port:
         from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketListener
-        ws_server = ThreadedWebsocketListener(engine_choicies, ws_port)
+        ws_server = ThreadedWebsocketListener(engine_choicies, dispatcher)
         ws_server.run_server('127.0.0.1', ws_port, block=False)
         servers.append(ws_server)
     if uds_path:
@@ -110,7 +110,7 @@ def main():
     first_server.block()
 
     for server in servers[1:]:
-        server.shutdown()
+        server.shutdown_server()
 
     dispatcher.shutdown()
     print('Server stopped.')

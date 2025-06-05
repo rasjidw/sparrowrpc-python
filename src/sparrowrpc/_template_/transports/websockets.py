@@ -87,11 +87,16 @@ class _Template_WebsocketListener:
 
     async def _run_server(self, bind_address, port):
         async with server.serve(self._websocket_handler, bind_address, port) as self.websocket_server: 
-            log.info(f'Listing on {bind_address}:{port}')
+            log.info(f'Websocket Listing on {bind_address}:{port}')
+            #= threaded start 
+            self.websocket_server.serve_forever()
+            #= threaded end
+            #= async start
             try:
                 await self.websocket_server.serve_forever()
-            except asyncio.CancelledError as e:
+            except asyncio.CancelledError:
                 pass  # this seems to be raised on server close. Don't re-raise it so we can shut down cleanly.
+            #= async end
 
     def _signal_handler(self, signum, frame):
         signame = signal.Signals(signum).name
@@ -120,6 +125,9 @@ class _Template_WebsocketListener:
 
     async def shutdown_server(self):
         log.info('Starting Server Shutdown')
+        self.stop_listening()
+        self.listening_thread.join()
+        
         self.time_to_stop = True
         for channel in self.connected_channels.values():
             assert isinstance(channel, _Template_MsgChannel)
