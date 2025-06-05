@@ -110,8 +110,8 @@ class AsyncWebsocketListener:
     async def shutdown_server(self):
         log.info('Starting Server Shutdown')
         self.stop_listening()
-        self.listening_thread.join()
-        
+        await self.listening_task
+
         self.time_to_stop = True
         for channel in self.connected_channels.values():
             assert isinstance(channel, AsyncMsgChannel)

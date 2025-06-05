@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from collections import namedtuple
 import itertools
+import os
 import sys
 from tempfile import NamedTemporaryFile
+import time
 
 import pytest
 
 
-import threaded_listening_server_code
 from listening_server_runner import ListeningServerRunner
 
 import common_data
@@ -19,36 +20,51 @@ from sparrowrpc.exceptions import CalleeException, CallerException
 
 from sparrowrpc.threaded import ThreadedDispatcher
 
-if sys.platform == 'win32':
-    socket_path = None
-else:
-    with NamedTemporaryFile(suffix='.sock', delete_on_close=False) as f:
-        socket_path = f.name
 
 
-port_names = ['threaded_tcp', 'threaded_ws', 'async_tcp', 'async_ws']
+
+port_names = ['threaded_tcp', 'threaded_ws', 'threaded_uds', 'async_tcp', 'async_ws', 'async_uds']
 Ports = namedtuple('Ports', port_names)
 
 
 @pytest.fixture(scope="module")
 def ports(start_port):
-    return Ports(start_port, start_port + 1, start_port + 10, start_port + 11)
+    if sys.platform == 'win32':
+        threaded_socket_path = async_socket_path = None
+    else:
+        with NamedTemporaryFile(suffix='.sock', delete_on_close=False) as f:
+            threaded_socket_path = f.name
+        with NamedTemporaryFile(suffix='.sock', delete_on_close=False) as f:
+            async_socket_path = f.name
+    return Ports(start_port, start_port + 1, threaded_socket_path, start_port + 10, start_port + 11, async_socket_path)
 
 
 @pytest.fixture(scope="module", autouse=True)
-def threaded_server(ports: Ports):
+def run_listening_servers(ports: Ports):
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    threaded_server_code = os.path.join(this_dir, 'listening_server_code_threaded.py')
     args = ['--tcp_port', str(ports.threaded_tcp), '--ws_port', str(ports.threaded_ws)]
-    if socket_path:
-        args.extend(['--uds_path', socket_path])
-    listening_server_runner = ListeningServerRunner(threaded_listening_server_code.__file__, args)
-    listening_server_runner.start()
+    if ports.threaded_uds:
+        args.extend(['--uds_path', ports.threaded_uds])
+    threaded_listening_server_runner = ListeningServerRunner(threaded_server_code, args)
+    threaded_listening_server_runner.start()
+
+    async_server_code = os.path.join(this_dir, 'listening_server_code_async.py')
+    args = ['--tcp_port', str(ports.async_tcp), '--ws_port', str(ports.async_ws)]
+    if ports.async_uds:
+        args.extend(['--uds_path', ports.async_uds])
+    async_listening_server_runner = ListeningServerRunner(async_server_code, args)
+    async_listening_server_runner.start()
+
+    time.sleep(2)  # wait for servers to fully start up    
     yield None
-    listening_server_runner.stop()
+    threaded_listening_server_runner.stop()
+    async_listening_server_runner.stop()
 
 
-connect_to_list = port_names.copy()[:2]  # FIXME: not done async server side yet
+connect_to_list = port_names.copy()
 if sys.platform != 'win32':
-    connect_to_list.append('uds')
+    connect_to_list.extend(['threaded_uds', 'async_uds'])
 
 serialisers = [JsonSerialiser(), MsgpackSerialiser(), CborSerialiser()]
 
@@ -71,10 +87,13 @@ def channel(request, ports: Ports):
         ws_connector = ThreadedWebsocketConnector(engine, dispatcher)
         port = ports._asdict()[connect_to]
         channel = ws_connector.connect(f'ws://127.0.0.1:{port}/{engine.get_engine_signature()}')
-    elif connect_to == 'uds':
+    elif connect_to.endswith('uds'):
         from sparrowrpc.threaded.transports import ThreadedUnixSocketConnector
         uds_connector = ThreadedUnixSocketConnector(engine, dispatcher)
+        socket_path = ports._asdict()[connect_to]
         channel = uds_connector.connect(socket_path)
+    else:
+        raise ValueError(f'Unexpected connect_to value of {connect_to}')
     channel.start_channel()
     yield channel
     channel.shutdown_channel()

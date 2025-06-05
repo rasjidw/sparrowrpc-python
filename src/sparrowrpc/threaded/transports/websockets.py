@@ -109,7 +109,7 @@ class ThreadedWebsocketListener:
         log.info('Starting Server Shutdown')
         self.stop_listening()
         self.listening_thread.join()
-        
+
         self.time_to_stop = True
         for channel in self.connected_channels.values():
             assert isinstance(channel, ThreadedMsgChannel)
