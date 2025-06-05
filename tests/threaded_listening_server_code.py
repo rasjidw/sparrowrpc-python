@@ -1,4 +1,4 @@
-
+import argparse
 import logging
 import sys
 import threading
@@ -8,12 +8,9 @@ from sparrowrpc.engines.v050 import ProtocolEngine
 from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser, MsgpackSerialiser, CborSerialiser
 
 from sparrowrpc.threaded import ThreadedDispatcher, ThreadedMsgChannel, ThreadedMsgChannelInjector, ThreadedCallbackProxy
-from sparrowrpc.threaded.transports import ThreadedUnixSocketListener
 
+import common_data
 
-SOCK_PATH = '/tmp/sparrowrpc-testing.sock'
-
-MULTPART_RESPONSE_ITEMS = ['apple', 'bannana', 'mango']
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
@@ -31,7 +28,7 @@ def hello_world(name=None):
 
 @export(multipart_response=True)
 def multipart_response():
-    for fruit in MULTPART_RESPONSE_ITEMS:
+    for fruit in common_data.MULTPART_RESPONSE_ITEMS:
         yield fruit
 
 
@@ -70,15 +67,51 @@ def division(a, b):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--tcp_port', type=int, help='Port for TCP Server')
+    parser.add_argument('--ws_port', type=int, help='Port for websocket server')
+    parser.add_argument('--uds_path', help='Path for listening unix socket')
+    args = parser.parse_args()
+
+    tcp_port = args.tcp_port
+    ws_port = args.ws_port
+    uds_path = args.uds_path
+
     json_engine = ProtocolEngine(JsonSerialiser())
     msgpack_engine = ProtocolEngine(MsgpackSerialiser())
     cbor_engine = ProtocolEngine(CborSerialiser())
 
     engine_choicies = [json_engine, msgpack_engine, cbor_engine]
-    dispatcher = ThreadedDispatcher(num_threads=5)    
-    print(f'Listening on unix socket {SOCK_PATH}')
-    uds_server = ThreadedUnixSocketListener(engine_choicies, dispatcher)
-    uds_server.run_server(SOCK_PATH)
+    dispatcher = ThreadedDispatcher(num_threads=5)
+    servers = list()
+
+    if tcp_port:
+        from sparrowrpc.threaded.transports import ThreadedTcpListener
+        tcp_server = ThreadedTcpListener(engine_choicies, dispatcher)
+        tcp_server.run_server('127.0.0.1', tcp_port, block=False)
+        servers.append(tcp_server)
+    if ws_port:
+        from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketListener
+        ws_server = ThreadedWebsocketListener(engine_choicies, ws_port)
+        ws_server.run_server('127.0.0.1', ws_port, block=False)
+        servers.append(ws_server)
+    if uds_path:
+        from sparrowrpc.threaded.transports import ThreadedUnixSocketListener
+        print(f'Listening on unix socket {uds_path}')
+        uds_server = ThreadedUnixSocketListener(engine_choicies, dispatcher)
+        uds_server.run_server(uds_path, block=False)
+        servers.append(uds_server)
+
+    # block on first server
+    if not servers:
+        raise ValueError('At least one server should be run')
+    
+    first_server = servers[0]
+    first_server.block()
+
+    for server in servers[1:]:
+        server.shutdown()
+
     dispatcher.shutdown()
     print('Server stopped.')
 

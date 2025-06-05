@@ -355,9 +355,9 @@ class ThreadedUnixSocketListener(ThreadedTcpListener):
     def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
         super().__init__(engine_choices, dispatcher, func_registers, handshake_cls)
 
-    def run_server(self, path, replace_if_in_use=False):
+    def run_server(self, path, replace_if_in_use=False, block=True):
         self.replace_unix_socket_if_in_use = replace_if_in_use
-        super().run_server(path, None)
+        super().run_server(path, None, block)
 
 
 class StreamTransport(ThreadedTransportBase):

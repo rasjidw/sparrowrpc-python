@@ -3,13 +3,11 @@ import sys
 import subprocess
 import time
 
-import threaded_listening_server_code
-
-
 
 class ListeningServerRunner:
-    def __init__(self, pyfile_path, stdout_filenane=None, stderr_filename=subprocess.STDOUT):
+    def __init__(self, pyfile_path, proc_arg_list, stdout_filenane=None, stderr_filename=subprocess.STDOUT):
         self.pyfile_path = pyfile_path
+        self.proc_arg_list = proc_arg_list
         self.sub_proc = None
         if not stdout_filenane:
             stdout_filenane = pathlib.Path(pyfile_path).stem + '.stdout.txt'
@@ -22,7 +20,7 @@ class ListeningServerRunner:
 
     def start(self):
         if not self.sub_proc:
-            args = [sys.executable, '-u', self.pyfile_path]
+            args = [sys.executable, '-u', self.pyfile_path] + self.proc_arg_list
             self.f_out = open(self.stdout_filename, 'w')
             if self.stderr_filename != subprocess.STDOUT:
                 self.f_err = open(self.stderr_filename, 'w')
@@ -47,6 +45,3 @@ class ListeningServerRunner:
                 self.f_out.close()
                 if self.f_err:
                     self.f_err.close()
-
-
-listening_server_runner = ListeningServerRunner(threaded_listening_server_code.__file__)

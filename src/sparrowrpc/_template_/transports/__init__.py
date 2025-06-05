@@ -452,9 +452,9 @@ class _Template_UnixSocketListener(_Template_TcpListener):
     def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
         super().__init__(engine_choices, dispatcher, func_registers, handshake_cls)
 
-    async def run_server(self, path, replace_if_in_use=False):
+    async def run_server(self, path, replace_if_in_use=False, block=True):
         self.replace_unix_socket_if_in_use = replace_if_in_use
-        await super().run_server(path, None)
+        await super().run_server(path, None, block)
 
 
 class StreamTransport(_Template_TransportBase):
