@@ -10,7 +10,7 @@ class SignalHandlerInstaller:
     def __init__(self, signals: Optional[Iterable[signal.Signals]] = ()):
         if not signals:
             if sys.platform == 'win32':
-                signals = [signal.SIGINT, signals.SIGBREAK]
+                signals = [signal.SIGINT, signal.SIGTERM, signal.SIGBREAK]
             else:
                 signals = [signal.SIGINT, signal.SIGTERM]
         self.signals = signals

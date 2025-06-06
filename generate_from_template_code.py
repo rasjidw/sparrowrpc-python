@@ -162,14 +162,14 @@ class ThreadedFromAsyncUpdater:
         src = self.get_src(rel_path)
         dst = self.asyc_dir / rel_path
         print(src, '-->', dst)        
-        orig = open(src).read()
+        orig = open(src, newline='\n').read()
         try:
             cooked = self.cook(orig, self.async_str)
         except ValueError:
             print(f'*** Error in file {src} ***')
             raise
         dst.parent.mkdir(exist_ok=True)
-        with open(dst, 'w') as f:
+        with open(dst, 'w', newline='\n') as f:
             f.write(cooked)
 
     def generate_threaded(self, rel_path):
@@ -177,10 +177,10 @@ class ThreadedFromAsyncUpdater:
         src = self.get_src(rel_path)
         dst = self.theaded_dir / rel_path
         print(src, '-->', dst)
-        orig = open(src).read()
+        orig = open(src, newline='\n').read()
         cooked = self.cook(orig, self.threaded_str)
         dst.parent.mkdir(exist_ok=True)
-        with open(dst, 'w') as f:
+        with open(dst, 'w', newline='\n') as f:
             f.write(cooked)
 
     def cook(self, orig_text: str, mode: str):

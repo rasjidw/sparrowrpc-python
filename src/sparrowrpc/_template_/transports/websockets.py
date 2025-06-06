@@ -113,7 +113,11 @@ class _Template_WebsocketListener:
         signal_handler_installer.install(self._signal_handler)
         try:
             #= threaded start
-            self.listening_thread.join()
+            while True:
+                # timeout required for windows or we never get the SIGINT signal
+                self.listening_thread.join(timeout=0.5)
+                if not self.listening_thread.is_alive():
+                    break
             #= threaded end
             #= async start
             await self.listening_task

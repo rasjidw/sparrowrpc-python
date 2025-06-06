@@ -22,8 +22,12 @@ from sparrowrpc.threaded import ThreadedDispatcher
 
 
 
-
-port_names = ['threaded_tcp', 'threaded_ws', 'threaded_uds', 'async_tcp', 'async_ws', 'async_uds']
+if sys.platform == 'win32':
+    port_names = ['threaded_tcp', 'threaded_ws', 'async_tcp', 'async_ws']
+    on_win32 = True
+else:
+    port_names = ['threaded_tcp', 'threaded_ws', 'threaded_uds', 'async_tcp', 'async_ws', 'async_uds']
+    on_win32 = False
 Ports = namedtuple('Ports', port_names)
 
 
@@ -31,12 +35,13 @@ Ports = namedtuple('Ports', port_names)
 def ports(start_port):
     if sys.platform == 'win32':
         threaded_socket_path = async_socket_path = None
+        return Ports(start_port, start_port + 1, start_port + 10, start_port + 11)
     else:
         with NamedTemporaryFile(suffix='.sock') as ft:
             threaded_socket_path = ft.name
             with NamedTemporaryFile(suffix='.sock') as fa:
                 async_socket_path = fa.name
-    return Ports(start_port, start_port + 1, threaded_socket_path, start_port + 10, start_port + 11, async_socket_path)
+        return Ports(start_port, start_port + 1, threaded_socket_path, start_port + 10, start_port + 11, async_socket_path)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -44,14 +49,14 @@ def run_listening_servers(ports: Ports):
     this_dir = os.path.dirname(os.path.abspath(__file__))
     threaded_server_code = os.path.join(this_dir, 'listening_server_code_threaded.py')
     args = ['--tcp_port', str(ports.threaded_tcp), '--ws_port', str(ports.threaded_ws)]
-    if ports.threaded_uds:
+    if not on_win32:
         args.extend(['--uds_path', ports.threaded_uds])
     threaded_listening_server_runner = ListeningServerRunner(threaded_server_code, args)
     threaded_listening_server_runner.start()
 
     async_server_code = os.path.join(this_dir, 'listening_server_code_async.py')
     args = ['--tcp_port', str(ports.async_tcp), '--ws_port', str(ports.async_ws)]
-    if ports.async_uds:
+    if not on_win32:
         args.extend(['--uds_path', ports.async_uds])
     async_listening_server_runner = ListeningServerRunner(async_server_code, args)
     async_listening_server_runner.start()
@@ -63,11 +68,7 @@ def run_listening_servers(ports: Ports):
 
 
 connect_to_list = port_names.copy()
-if sys.platform != 'win32':
-    connect_to_list.extend(['threaded_uds', 'async_uds'])
-
 serialisers = [JsonSerialiser(), MsgpackSerialiser(), CborSerialiser()]
-
 channel_params = list(itertools.product(connect_to_list, serialisers))
 
 

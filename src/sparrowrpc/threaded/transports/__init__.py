@@ -351,7 +351,10 @@ class ThreadedTcpListener:
             signal_handler_installer = SignalHandlerInstaller(signals)
             signal_handler_installer.install(self._signal_handler)
         try:
-            self.time_to_stop.wait()
+            while True:
+                # the timeout is required for Windows to enable the signals to be caught
+                if self.time_to_stop.wait(timeout=0.5):
+                    break
             self.listening_thread.join()
         finally:
             if not running_micropython:
