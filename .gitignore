@@ -6,3 +6,4 @@ venv
 zz*
 *.stdout.txt
 .coverage*
+.tox
