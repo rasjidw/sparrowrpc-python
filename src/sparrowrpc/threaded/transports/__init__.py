@@ -187,15 +187,24 @@ class ThreadedTcpTransport(ThreadedTransportBase):
     def __init__(self, conn_socket: socket.socket, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
         super().__init__(max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.socket = conn_socket
+        self.closing_socket = False
 
     def _read_data(self, size):
-        return self.socket.recv(size)
-
+        try:
+            data = self.socket.recv(size)
+            print(f'>>> Read {len(data)} bytes')
+            return data
+        except Exception as e:
+            if self.closing_socket:
+                return ''
+            raise
+        
     def _write_data(self, data):
         log.debug(f'Sending data: {data}')
         self.socket.sendall(data)
 
     def close(self):
+        self.closing_socket = True
         self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
 
