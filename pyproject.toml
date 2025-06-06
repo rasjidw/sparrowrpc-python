@@ -14,6 +14,7 @@ dependencies = [
 optional-dependencies.dev = [
     "pytest",
     "pytest-cov",
+    "pytest-asyncio",
 ]
 
 optional-dependencies.websockets = [
@@ -30,3 +31,13 @@ optional-dependencies.cbor = [
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.coverage.run]
+omit = [
+    "src/sparrowrpc/_template_/*",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "module"
+asyncio_default_test_loop_scope = "module"
