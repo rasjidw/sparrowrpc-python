@@ -32,10 +32,10 @@ def ports(start_port):
     if sys.platform == 'win32':
         threaded_socket_path = async_socket_path = None
     else:
-        with NamedTemporaryFile(suffix='.sock', delete_on_close=False) as f:
-            threaded_socket_path = f.name
-        with NamedTemporaryFile(suffix='.sock', delete_on_close=False) as f:
-            async_socket_path = f.name
+        with NamedTemporaryFile(suffix='.sock') as ft:
+            threaded_socket_path = ft.name
+            with NamedTemporaryFile(suffix='.sock') as fa:
+                async_socket_path = fa.name
     return Ports(start_port, start_port + 1, threaded_socket_path, start_port + 10, start_port + 11, async_socket_path)
 
 
