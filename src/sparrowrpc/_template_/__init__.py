@@ -117,6 +117,7 @@ class _Template_TransportBase(ABC):
                 if data:
                     for incoming_chain in self.chain_reader.get_binary_chains(data):
                         queue_data = (incoming_chain, self.chain_reader.complete(), self.remote_closed)
+                        log.debug(f'Put Incoming queue_data: {queue_data}')
                         await self.incoming_queue.put(queue_data)
                 else:
                     break
@@ -127,6 +128,7 @@ class _Template_TransportBase(ABC):
         try:
             # put sentinel on incoming queue
             queue_data = (None, self.chain_reader.complete(), self.remote_closed)
+            log.debug(f'Put Incoming queue_data: (Sentinel) {queue_data}')
             await self.incoming_queue.put(queue_data)
         except Exception as e:
             log.error(f'Error putting sentinel on incoming queue - {e!s}')
@@ -478,7 +480,8 @@ class _Template_MsgChannel(MsgChannelBase):
         while True:
             (bin_chain, complete, remote_closed) = await self.transport.incoming_queue.get()
             if bin_chain is None:
-                if not complete:
+                # NOTE: complete is None is okay, as that is the shutdown marker
+                if complete == False:
                     log.warning('Got end of chains but not complete')
                 break
             
