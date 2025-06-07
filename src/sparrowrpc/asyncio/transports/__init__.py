@@ -193,9 +193,17 @@ class AsyncTcpTransport(AsyncTransportBase):
         super().__init__(max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.stream_reader = stream_reader
         self.stream_writer = stream_writer
+        self.closing_socket = False
 
     async def _read_data(self, size):
-        return await self.stream_reader.read(size)
+        try:
+            return await self.stream_reader.read(size)
+        except Exception:
+            if self.closing_socket:
+                # windows and micropython return errors once the socket is closed
+                # just return ''
+                return ''
+            raise
 
     async def _write_data(self, data):
         log.debug(f'Sending data: {data}')
@@ -203,6 +211,7 @@ class AsyncTcpTransport(AsyncTransportBase):
         await self.stream_writer.drain()
 
     async def close(self):
+        self.closing_socket = True
         self.stream_writer.close()
         await self.stream_writer.wait_closed()
     
