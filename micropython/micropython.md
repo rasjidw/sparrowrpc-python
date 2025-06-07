@@ -10,7 +10,12 @@ collections-defaultdict
 datetime
 inspect
 logging
+shutil
+tempfile
 traceback
+
+## Ecosys modules
+cbor2  # optional
 
 ## mip installable externally available module
 

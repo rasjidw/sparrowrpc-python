@@ -11,7 +11,6 @@ from abc import ABC, abstractmethod
 from collections import defaultdict, namedtuple
 import logging
 import os
-import signal
 import sys
 import tempfile
 
@@ -25,12 +24,19 @@ if sys.platform != 'webassembly':
 else:
     socket = None
 
+running_micropython = (sys.implementation.name == 'micropython')
+
+if not running_micropython:
+    import signal
+
+
 from binarychain import BinaryChain, ChainReader
 
 
 from ...bases import ProtocolEngineBase
 from ...engines import hs
-from ...lib import SignalHandlerInstaller, detect_unix_socket_in_use
+if not running_micropython:
+    from ...lib import SignalHandlerInstaller, detect_unix_socket_in_use
 from ...messages import IncomingRequest, IncomingResponse, OutgoingRequest, OutgoingResponse
 
 from ...threaded import ThreadedMsgChannel, ThreadedTransportBase
@@ -341,13 +347,15 @@ class ThreadedTcpListener:
         self.time_to_stop.set()
 
     def block(self, signals=None):
-        signal_handler_installer = SignalHandlerInstaller(signals)
-        signal_handler_installer.install(self._signal_handler)
+        if not running_micropython:
+            signal_handler_installer = SignalHandlerInstaller(signals)
+            signal_handler_installer.install(self._signal_handler)
         try:
             self.time_to_stop.wait()
             self.listening_thread.join()
         finally:
-            signal_handler_installer.remove()
+            if not running_micropython:
+                signal_handler_installer.remove()
         self.shutdown_server()
 
 

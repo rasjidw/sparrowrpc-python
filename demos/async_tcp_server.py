@@ -120,7 +120,7 @@ async def division(a, b):
 
 async def main():
     parser = argparse.ArgumentParser()
-    group = parser.add_mutually_exclusive_group()
+    group = parser.add_mutually_exclusive_group() if not micropython else parser
     group.add_argument('--unix-socket', action='store_true')
     if AsyncWebsocketListener:
         group.add_argument('--websocket', action='store_true')

@@ -125,13 +125,13 @@ async def main(args):
     print(f'Engine signature is: {engine.get_engine_signature()}')
 
     dispatcher = AsyncDispatcher(num_threads=5)
-    if args.websocket:
+    if getattr(args, 'websocket', None):
         connector = AsyncWebsocketConnector(engine, dispatcher)
         engine_sig = engine.get_engine_signature()
         uri = f'ws://127.0.0.1:9001/{engine_sig}'
         channel = await connector.connect(uri)
     else:
-        if args.unix_socket:
+        if getattr(args, 'unix_socket', None):
             path = '/tmp/sparrowrpc.sock'
             connector = AsyncUnixSocketConnector(engine, dispatcher)
             channel = await connector.connect(path)
@@ -220,16 +220,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true')
 
-    group = parser.add_mutually_exclusive_group()
+    group = parser.add_mutually_exclusive_group() if not micropython else parser
     if MsgpackSerialiser:
         group.add_argument('--msgpack', action='store_true')
     if CborSerialiser:
         group.add_argument('--cbor', action='store_true')
 
-    conn_group = parser.add_mutually_exclusive_group()
-    conn_group.add_argument('--unix-socket', action='store_true')
-    if AsyncWebsocketConnector:
-        conn_group.add_argument('--websocket', action='store_true')
+    if not micropython:
+        conn_group = parser.add_mutually_exclusive_group()
+        conn_group.add_argument('--unix-socket', action='store_true')
+        if AsyncWebsocketConnector:
+            conn_group.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
     root_logger = logging.getLogger()

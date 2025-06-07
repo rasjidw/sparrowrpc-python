@@ -41,10 +41,11 @@ class JsonSerialiser(BaseSerialiser):
 if have_msgpack:
     class MsgpackSerialiser(BaseSerialiser):
         sig = 'MP'
+        # using dumps and loads for micropython compatibility
         def serialise(self, obj_data: Any) -> bytes:
-            return msgpack.packb(obj_data)
+            return msgpack.dumps(obj_data)
         def deserialise(self, bin_data: bytes) -> Any:
-            return msgpack.unpackb(bin_data)
+            return msgpack.loads(bin_data)
 
 
 if have_cbor2:
