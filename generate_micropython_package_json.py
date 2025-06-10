@@ -25,7 +25,7 @@ GITHUB_REPO = 'github:rasjidw/sparrowrpc-python/'
 
 def main():
     repo_root = pathlib.Path(__file__).parent
-    micropython_dir = repo_root / 'libmpy'
+    micropython_dir = repo_root / 'micropython'
 
     urls = list()
     for dirpath, dirs, filenames in micropython_dir.walk():

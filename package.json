@@ -2,19 +2,19 @@
   "urls": [
     [
       "enum.py",
-      "github:rasjidw/sparrowrpc-python/libmpy/enum.py"
+      "github:rasjidw/sparrowrpc-python/micropython/enum.py"
     ],
     [
       "abc.py",
-      "github:rasjidw/sparrowrpc-python/libmpy/abc.py"
+      "github:rasjidw/sparrowrpc-python/micropython/abc.py"
     ],
     [
       "uasync/queues.py",
-      "github:rasjidw/sparrowrpc-python/libmpy/uasync/queues.py"
+      "github:rasjidw/sparrowrpc-python/micropython/uasync/queues.py"
     ],
     [
       "uasync/__init__.py",
-      "github:rasjidw/sparrowrpc-python/libmpy/uasync/__init__.py"
+      "github:rasjidw/sparrowrpc-python/micropython/uasync/__init__.py"
     ],
     [
       "sparrowrpc/decorators.py",
