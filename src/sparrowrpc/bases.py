@@ -3,9 +3,11 @@ from __future__ import annotations
 import sys
 
 if sys.implementation.name == 'micropython':
-    from uabc import ABC, abstractmethod  # typing: ignore
+    # use our own uabc until the official micropython version is fixed
+    from uabc import ABC, abstractmethod  # type: ignore
 else:
     from abc import ABC, abstractmethod
+
 import logging
 
 from binarychain import BinaryChain
