@@ -16,8 +16,11 @@ DEPS = [
     ["traceback", "latest"],
     ["github:rasjidw/binarychain-python", "main"],
     ["github:josverl/micropython-stubs/mip/typing.py", "main"],
-    ["github:dhrosa/udataclasses", "main"]
+    ["github:rasjidw/udataclasses", "main"]
 ]
+
+
+GITHUB_REPO = 'github:rasjidw/sparrowrpc-python/'
 
 
 def main():
@@ -32,7 +35,7 @@ def main():
                 src_path = src_relative_dir / filename
                 dst_relative = dirpath.relative_to(micropython_dir)
                 dst_path = dst_relative / filename
-                urls.append([str(dst_path), str(src_path)])
+                urls.append([str(dst_path), GITHUB_REPO + str(src_path)])
 
     src_dir = repo_root / 'src'
     sparrowrpc_dir = src_dir / 'sparrowrpc'
@@ -47,7 +50,7 @@ def main():
                 src_path = src_relative_dir / filename
                 dst_relative = dirpath.relative_to(src_dir)
                 dst_path = dst_relative / filename
-                urls.append([str(dst_path), str(src_path)])
+                urls.append([str(dst_path), GITHUB_REPO + str(src_path)])
 
     package_data = dict(urls=urls, deps=DEPS)
     with open('package.json', 'w') as f:
