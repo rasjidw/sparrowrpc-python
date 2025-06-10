@@ -16,7 +16,7 @@ DEPS = [
     ["traceback", "latest"],
     ["github:rasjidw/binarychain-python", "main"],
     ["github:josverl/micropython-stubs/mip/typing.py", "main"],
-    ["github:rasjidw/udataclasses", "feature/mip_installable"]
+    ["github:dhrosa/udataclasses", "main"]
 ]
 
 

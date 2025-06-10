@@ -123,8 +123,8 @@
       "main"
     ],
     [
-      "github:rasjidw/udataclasses",
-      "feature/mip_installable"
+      "github:dhrosa/udataclasses",
+      "main"
     ]
   ]
 }
