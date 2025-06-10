@@ -1,6 +1,11 @@
-from abc import ABC, abstractmethod
-import json
 import sys
+if sys.implementation.name == 'micropython':
+    # use our own uabc until the official micropython version is fixed
+    from uabc import ABC, abstractmethod  # type: ignore
+else:
+    from abc import ABC, abstractmethod
+
+import json
 from typing import Any
 
 

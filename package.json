@@ -5,8 +5,8 @@
       "github:rasjidw/sparrowrpc-python/micropython/enum.py"
     ],
     [
-      "abc.py",
-      "github:rasjidw/sparrowrpc-python/micropython/abc.py"
+      "uabc.py",
+      "github:rasjidw/sparrowrpc-python/micropython/uabc.py"
     ],
     [
       "uasync/queues.py",

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+import sys
+
+if sys.implementation.name == 'micropython':
+    from uabc import ABC, abstractmethod  # typing: ignore
+else:
+    from abc import ABC, abstractmethod
 import logging
 
 from binarychain import BinaryChain

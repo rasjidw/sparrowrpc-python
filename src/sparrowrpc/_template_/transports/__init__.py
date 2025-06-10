@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+import sys
+if sys.implementation.name == 'micropython':
+    # use our own uabc until the official micropython version is fixed
+    from uabc import ABC, abstractmethod  # type: ignore
+else:
+    from abc import ABC, abstractmethod
+
 from collections import defaultdict, namedtuple
 import logging
 import os
-import sys
 import tempfile
 
 if 'threaded' in __name__: #= remove
