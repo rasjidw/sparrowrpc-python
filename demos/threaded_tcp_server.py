@@ -32,11 +32,8 @@ logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
 
 
 @export
-def hello_world(name=None):
-    if name:
-        return f'Hello {name}!'
-    else:
-        return f'Hello world!'
+def hello_world(name='world'):
+    return f'Hello {name}!'
 
 
 @export

@@ -2,32 +2,12 @@
 
 Currently only tested under the Linux port of Micropython, and on Micropython under Pyscript.
 
-## Std Modules to install with mip
+## Installation
 
-__future__
-collections
-collections-defaultdict
-datetime
-inspect
-logging
-shutil
-tempfile
-traceback
+```
+micropython -m mip install github:rasjidw/sparrowrpc-python
+micropython -m mip install github:peterhinch/micropython-msgpack  # optional
+micropython -m mip install cbor2  # optional
+```
 
-## Ecosys modules
-cbor2  # optional
-
-## mip installable externally available module
-
-micropython -m mip install github:josverl/micropython-stubs/mip/typing.py
-
-## Other modules externally available
-
-umsgpack - from https://github.com/peterhinch/micropython-msgpack
-udataclasses - from https://github.com/dhrosa/udataclasses
-
-## Other modules / stubs in this repo
-
-abc
-enum
-uasync
+**NOTE:** Sparrowrpc installs an updated version of the abc standard module. It is recommended to remove any existing abc.mpy file before installing sparrowrpc.
