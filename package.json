@@ -2,19 +2,19 @@
   "urls": [
     [
       "enum.py",
-      "micropython/enum.py"
+      "libmpy/enum.py"
     ],
     [
       "abc.py",
-      "micropython/abc.py"
+      "libmpy/abc.py"
     ],
     [
       "uasync/queues.py",
-      "micropython/uasync/queues.py"
+      "libmpy/uasync/queues.py"
     ],
     [
       "uasync/__init__.py",
-      "micropython/uasync/__init__.py"
+      "libmpy/uasync/__init__.py"
     ],
     [
       "sparrowrpc/decorators.py",

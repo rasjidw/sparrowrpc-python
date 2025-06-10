@@ -22,7 +22,7 @@ DEPS = [
 
 def main():
     repo_root = pathlib.Path(__file__).parent
-    micropython_dir = repo_root / 'micropython'
+    micropython_dir = repo_root / 'libmpy'
 
     urls = list()
     for dirpath, dirs, filenames in micropython_dir.walk():
