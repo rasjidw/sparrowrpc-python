@@ -342,15 +342,19 @@ async def _template__run_request_not_waiting(msg_channel: _Template_MsgChannel, 
 
 
 async def _template__dispatch_request_or_notification(msg_channel, incoming_msg, func_info, completed_callback=None):
-    if isinstance(incoming_msg, IncomingRequest):
-        if incoming_msg.request_type == RequestType.SILENT:
+    try:
+        if isinstance(incoming_msg, IncomingRequest):
+            if incoming_msg.request_type == RequestType.SILENT:
+                await _template__run_request_not_waiting(msg_channel, incoming_msg, func_info, completed_callback)
+            else:
+                await _template__run_request_wait_to_complete(msg_channel, incoming_msg, func_info, completed_callback)
+        elif isinstance(incoming_msg, IncomingNotification):
             await _template__run_request_not_waiting(msg_channel, incoming_msg, func_info, completed_callback)
         else:
-            await _template__run_request_wait_to_complete(msg_channel, incoming_msg, func_info, completed_callback)
-    elif isinstance(incoming_msg, IncomingNotification):
-        await _template__run_request_not_waiting(msg_channel, incoming_msg, func_info, completed_callback)
-    else:
-        log.warning(f'Got unhandled message {incoming_msg}')
+            log.warning(f'Got unhandled message {incoming_msg}')
+    except Exception as e:
+        # FIXME: What do we do here!
+        log.error(f'>>>> Dispatch request error: {str(e)} <<<<')
 
 
 class _Template_Dispatcher(_Template_DispatcherBase):
@@ -389,17 +393,24 @@ class _Template_Dispatcher(_Template_DispatcherBase):
         while not self.time_to_stop:
             try:
                 msg_channel, incoming_msg, func_info = await asyncio.wait_for(self.incoming_queue.get(), timeout=1)
-            except asyncio.TimeoutError:
+            except Exception as e:
+                if not isinstance(e, asyncio.TimeoutError):
+                    print(f'*** Got error {str(e)} in _async_task_fetcher - continuing')
                 continue
-            task = asyncio.create_task(_template__dispatch_request_or_notification(msg_channel, incoming_msg, func_info,
-                                                                                    completed_callback=self._task_done_callback))
-            self.tasks.add(task)
+            try:
+                task = asyncio.create_task(_template__dispatch_request_or_notification(msg_channel, incoming_msg, func_info,
+                                                                                        completed_callback=self._task_done_callback))
+                self.tasks.add(task)
+            except Exception:
+                log.error(f'Error creating task for {incoming_msg}!')
 
     async def _cleanup_completed_tasks(self):
         while not self.time_to_stop:
             try:
                 task = await asyncio.wait_for(self.completed_tasks_queue.get(), timeout=1)
-            except asyncio.TimeoutError:
+            except Exception as e:
+                if not isinstance(e, asyncio.TimeoutError):
+                    log.error(f'Got exception {e!s} waiting for completed tasks')
                 continue
 
             try:
@@ -620,6 +631,7 @@ class _Template_ResponsePump():
 
     async def _cb_reader(self, event):
         await self.return_queue.put(event)
+        log.debug(f'Put event {event!s} on return queue')
 
     async def send_message(self, message: OutgoingRequest, timeout=None):
         self.timeout = timeout
@@ -714,7 +726,9 @@ class _Template_ResponsePump():
             #= async start
             try:
                 return await asyncio.wait_for(self.return_queue.get(), timeout=1)
-            except asyncio.TimeoutError:
+            except Exception as e:
+                if not isinstance(e, asyncio.TimeoutError):
+                    log.error(f'Get error {str(e)} waiting for timeout')
                 self.count += 1
                 if self.timeout and self.count > self.timeout:
                     raise RuntimeError('TIMEOUT')  # FIXME. We should at least clean up incoming registers etc. Do we notify the callee?
@@ -725,7 +739,11 @@ class _Template_ResponsePump():
         
     async def __anext__(self):
         while True:
-            event = await self.get_next_event_with_timeout()
+            try:
+                event = await self.get_next_event_with_timeout()
+            except Exception as e:
+                log.error(f'Got exception {str(e)} in __anext__')
+
             log.debug(f'Got event in __anext__: {event}')
             if isinstance(event, MessageSentEvent):
                 await self.call_msg_sent_callback(event)

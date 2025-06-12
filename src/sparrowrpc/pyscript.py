@@ -31,7 +31,10 @@ class PyscriptWebsocketTransport(AsyncTransportBase):
         self.js_ws = WebSocket(url=ws_url, onopen=self.js_onopen, onmessage=self.js_onmessage, onclose=self.js_onclose, onerror=self.js_onerror)
         open_result = await self.open_complete.get()
         if open_result:  # an error
+            log.error(f'Got an open_result error of {open_result}')
             raise open_result
+        else:
+            log.debug(f'connect to {self.ws_url} successful')
 
     async def js_onopen(self, event):
         log.debug(f'Got onopen event: {event!r}')

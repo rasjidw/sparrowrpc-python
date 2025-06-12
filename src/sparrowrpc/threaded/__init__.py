@@ -301,15 +301,19 @@ def threaded_run_request_not_waiting(msg_channel: ThreadedMsgChannel, request: I
 
 
 def threaded_dispatch_request_or_notification(msg_channel, incoming_msg, func_info, completed_callback=None):
-    if isinstance(incoming_msg, IncomingRequest):
-        if incoming_msg.request_type == RequestType.SILENT:
+    try:
+        if isinstance(incoming_msg, IncomingRequest):
+            if incoming_msg.request_type == RequestType.SILENT:
+                threaded_run_request_not_waiting(msg_channel, incoming_msg, func_info, completed_callback)
+            else:
+                threaded_run_request_wait_to_complete(msg_channel, incoming_msg, func_info, completed_callback)
+        elif isinstance(incoming_msg, IncomingNotification):
             threaded_run_request_not_waiting(msg_channel, incoming_msg, func_info, completed_callback)
         else:
-            threaded_run_request_wait_to_complete(msg_channel, incoming_msg, func_info, completed_callback)
-    elif isinstance(incoming_msg, IncomingNotification):
-        threaded_run_request_not_waiting(msg_channel, incoming_msg, func_info, completed_callback)
-    else:
-        log.warning(f'Got unhandled message {incoming_msg}')
+            log.warning(f'Got unhandled message {incoming_msg}')
+    except Exception as e:
+        # FIXME: What do we do here!
+        log.error(f'>>>> Dispatch request error: {str(e)} <<<<')
 
 
 class ThreadedDispatcher(ThreadedDispatcherBase):
@@ -500,6 +504,7 @@ class ThreadedResponsePump():
 
     def _cb_reader(self, event):
         self.return_queue.put(event)
+        log.debug(f'Put event {event!s} on return queue')
 
     def send_message(self, message: OutgoingRequest, timeout=None):
         self.timeout = timeout
@@ -579,7 +584,11 @@ class ThreadedResponsePump():
         
     def __next__(self):
         while True:
-            event = self.get_next_event_with_timeout()
+            try:
+                event = self.get_next_event_with_timeout()
+            except Exception as e:
+                log.error(f'Got exception {str(e)} in __next__')
+
             log.debug(f'Got event in __next__: {event}')
             if isinstance(event, MessageSentEvent):
                 self.call_msg_sent_callback(event)
