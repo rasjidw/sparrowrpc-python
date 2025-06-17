@@ -352,7 +352,7 @@ class AsyncDispatcher(AsyncDispatcherBase):
                 msg_channel, incoming_msg, func_info = await asyncio.wait_for(self.incoming_queue.get(), timeout=1)
             except Exception as e:
                 if not isinstance(e, asyncio.TimeoutError):
-                    print(f'*** Got error {str(e)} in _async_task_fetcher - continuing')
+                    log.error(f'*** Got error {str(e)} in _async_task_fetcher - continuing')
                 continue
             try:
                 task = asyncio.create_task(async_dispatch_request_or_notification(msg_channel, incoming_msg, func_info,
