@@ -15,33 +15,13 @@ class QueueFull(Exception):
     pass
 
 
-class Waiter:
-    def __init__(self):
-        self.event = asyncio.Event()
-        self.waiting_task = asyncio.current_task()
-        if not self.waiting_task:
-            raise RuntimeError('Must be called within a task')
-
-    def wake_up(self):
-        self.event.set()
-
-    def is_awake(self):
-        return self.event.is_set()
-    
-    def is_alive(self):
-        return self.waiting_task.done() == False
-    
-    async def wait_till_awake(self):
-        await self.event.wait()
-        if not self.is_alive():
-            raise ValueError('Waiting task is done or cancelled')
-
-
 class Queue:
     """A queue, useful for coordinating producer and consumer coroutines.
 
-    If maxsize is less than or equal to zero, the queue size is infinite. If it
-    is an integer greater than 0, then "await put()" will block when the
+    Unlike CPython's asyncio.Queue, for the default queue type,
+    this Queue must always have a non-zero maximum size.
+    
+    "await put()" will block when the
     queue reaches maxsize, until an item is removed by get().
 
     Unlike the standard library Queue, you can reliably know this Queue's size
@@ -52,22 +32,23 @@ class Queue:
     default_maxsize = 256
 
     def __init__(self, maxsize=None):
-        if maxsize is None:
-            maxsize = self.default_maxsize
-        if maxsize < 1:
-            raise ValueError('maxsize must be 1 or higher')
-        self._maxsize = maxsize
+        self._init(maxsize)
+        self._not_empty_event = asyncio.Event()
+        self._not_full_event = asyncio.Event()
+        self._not_full_event.set()
 
-        self._getters = list()  # Watier
-        self._putters = list()  # Watier
         self._unfinished_tasks = 0
         self._finished = asyncio.Event()
         self._finished.set()
-        self._init(maxsize)
 
     # These three are overridable in subclasses.
 
     def _init(self, maxsize):
+        if maxsize is None:
+            maxsize = self.default_maxsize
+        if maxsize < 1:
+            raise ValueError('maxsize must be 1 or higher')
+        self._maxsize = maxsize        
         self._queue = collections.deque([], maxsize)
 
     def _get(self):
@@ -77,16 +58,6 @@ class Queue:
         self._queue.append(item)
 
     # End of the overridable methods.
-
-    def _wakeup_next(self, waiters):
-        # Wake up the next waiter (if any) that isn't awake.
-        while waiters:
-            # popleft equivalent
-            waiter = waiters[0]
-            del waiters[0]
-            if not waiter.is_awake():
-                waiter.wake_up()
-                break
 
     def __repr__(self):
         return f'<{type(self).__name__} at {id(self):#x} {self._format()}>'
@@ -98,10 +69,6 @@ class Queue:
         result = f'maxsize={self._maxsize!r}'
         if getattr(self, '_queue', None):
             result += f' _queue={list(self._queue)!r}'
-        if self._getters:
-            result += f' _getters[{len(self._getters)}]'
-        if self._putters:
-            result += f' _putters[{len(self._putters)}]'
         if self._unfinished_tasks:
             result += f' tasks={self._unfinished_tasks}'
         return result
@@ -122,7 +89,7 @@ class Queue:
     def full(self):
         """Return True if there are maxsize items in the queue.
 
-        Note: if the Queue was initialized with maxsize=0 (the default),
+        Note: if the Queue was initialized with maxsize <= 0,
         then full() is never True.
         """
         if self._maxsize <= 0:
@@ -136,25 +103,12 @@ class Queue:
         Put an item into the queue. If the queue is full, wait until a free
         slot is available before adding item.
         """
-        while self.full():
-            putter = Waiter()
-            self._putters.append(putter)
+        while True:
             try:
-                await putter.wait_till_awake()
-            except:
-                try:
-                    # Clean self._putters from canceled putters.
-                    self._putters.remove(putter)
-                except ValueError:
-                    # The putter could be removed from self._putters by a
-                    # previous get_nowait call.
-                    pass
-                if not self.full() and not putter.is_alive():
-                    # We were woken up by get_nowait(), but can't take
-                    # the call.  Wake up the next in line.
-                    self._wakeup_next(self._putters)
-                raise
-        return self.put_nowait(item)
+                self.put_nowait(item)
+                return
+            except QueueFull:
+                await self._not_full_event.wait()
 
     def put_nowait(self, item):
         """Put an item into the queue without blocking.
@@ -162,36 +116,24 @@ class Queue:
         If no free slot is immediately available, raise QueueFull.
         """
         if self.full():
+            self._not_full_event.clear()
             raise QueueFull
         self._put(item)
+        self._not_empty_event.set()
         self._unfinished_tasks += 1
         self._finished.clear()
-        self._wakeup_next(self._getters)
 
     async def get(self):
         """Remove and return an item from the queue.
 
         If queue is empty, wait until an item is available.
         """
-        while self.empty():
-            getter = Waiter()
-            self._getters.append(getter)
+        while True:
             try:
-                await getter.wait_till_awake()
-            except:
-                try:
-                    # Clean self._getters from canceled getters.
-                    self._getters.remove(getter)
-                except ValueError:
-                    # The getter could be removed from self._getters by a
-                    # previous put_nowait call.
-                    pass
-                if not self.empty() and not getter.is_alive():
-                    # We were woken up by put_nowait(), but can't take
-                    # the call.  Wake up the next in line.
-                    self._wakeup_next(self._getters)
-                raise
-        return self.get_nowait()
+                item = self.get_nowait()
+                return item
+            except QueueEmpty:
+                await self._not_empty_event.wait()
 
     def get_nowait(self):
         """Remove and return an item from the queue.
@@ -199,9 +141,10 @@ class Queue:
         Return an item if one is immediately available, else raise QueueEmpty.
         """
         if self.empty():
+            self._not_empty_event.clear()
             raise QueueEmpty
         item = self._get()
-        self._wakeup_next(self._putters)
+        self._not_full_event.set()
         return item
 
     def task_done(self):
