@@ -483,6 +483,21 @@ class ThreadedChannelProxy:
 
         req_id = self.channel.queue_message(message, event_callback, add_id_callback = reg_id_for_callbacks)
         return req_id
+    
+    def send_request_wait_via_callbacks(self, message: OutgoingRequest, on_msg_sent=None, on_ack=None, on_result=None):
+        def event_callback(event):
+            if isinstance(event, MessageSentEvent):
+                if on_msg_sent:
+                    on_msg_sent(event)
+            elif isinstance(event, IncomingAcknowledge):
+                if on_ack:
+                    on_ack(event)
+            elif isinstance(event, IncomingResponse):
+                if on_result:
+                    on_result(event)
+            else:
+                log.error(f'Unhandled event type {type(event)}!')  # FIXME: should double check we have everything covered 
+        return self.send_request_raw_async(message, event_callback)
 
 
 # FIXME: Do we just always return the result and event.final??? Makes the API more consistent
