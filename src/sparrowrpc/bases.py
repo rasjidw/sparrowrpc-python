@@ -1,14 +1,8 @@
 from __future__ import annotations
 
-import sys
-
-if sys.implementation.name == 'micropython':
-    # use our own uabc until the official micropython version is fixed
-    from uabc import ABC, abstractmethod  # type: ignore
-else:
-    from abc import ABC, abstractmethod
-
+from abc import ABC, abstractmethod
 import logging
+import sys
 
 from binarychain import BinaryChain
 

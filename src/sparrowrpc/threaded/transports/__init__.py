@@ -7,17 +7,12 @@
 
 from __future__ import annotations
 
-import sys
-if sys.implementation.name == 'micropython':
-    # use our own uabc until the official micropython version is fixed
-    from uabc import ABC, abstractmethod  # type: ignore
-else:
-    from abc import ABC, abstractmethod
-
+from abc import ABC, abstractmethod
 from collections import defaultdict, namedtuple
 import logging
 import os
 import tempfile
+import sys
 
 from threading import Thread, Lock, Event, current_thread
 from queue import Queue, Empty as QueueEmpty
