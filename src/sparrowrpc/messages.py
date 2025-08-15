@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-try:
-    from dataclasses import dataclass
-except ImportError:
-    from udataclasses import dataclass  # type: ignore (for micropython)
 
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, Callable
 import sys
 
 if sys.version_info >= (3, 11) or sys.implementation.name == 'micropython':
     from enum import StrEnum
 else:
     from backports.strenum import StrEnum # type: ignore
+
+
 
 
 __all__ = ['RequestType', 'ResponseType', 'FinalType', 'PushIterableInfo', 'RequestBase', 'OutgoingRequest', 
@@ -51,42 +49,47 @@ class FinalType(StrEnum):
 # Void = VoidType()
 
 
-@dataclass
 class PushIterableInfo:
-    iter: Optional[Iterable] = None
-    return_details: Any = None  # FIXME: This is not done yet.
+    def __init__(self, iter: Optional[Iterable] = None, return_details: Any = None):
+        self.iter = iter
+        self.return_details = return_details     # FIXME: return_details is not done yet.
 
 
-@dataclass
-class RequestBase:
-    target: str = ''
-    namespace: str = ''
-    node: str = None
-    params: dict = None  # param name -> value
-    callback_request_id: int = None
-    raw_binary: bool = False
-    data: bytearray = None  # only set / valid if raw_binary = True
-
-    def __post_init__(self):
-        # convert namespace of None to ''
-        self.namespace = '' if self.namespace is None else self.namespace
-        self.validate()
-
-    def validate(self):
-        if not self.target:
-            raise ValueError('target must be set')
+class EventBase:
+    @property
+    def _properties(self):
+        return self.__dict__.items()
+    
+    def __repr__(self):
+        items = (f"{k}={v!r}" for k, v in self._properties if not k.startswith('_'))
+        return f"<{self.__class__.__name__}: {', '.join(items)}>"
 
 
-@dataclass
+
+class RequestBase(EventBase):
+    def __init__(self, target: str, namespace: str='', node: Optional[str]=None, params: Optional[dict]=None,  # param name -> value
+                 callback_request_id: Optional[int]=None, raw_binary: bool=False, data: Optional[bytearray]=None  # only set / valid if raw_binary = True
+                 ):
+        self.target = target
+        self.namespace = '' if namespace is None else namespace
+        self.node = node
+        self.params = params
+        self.callback_request_id = callback_request_id
+        self.raw_binary = raw_binary
+        self.data = data
+
+
 class OutgoingRequest(RequestBase):
-    acknowledge: bool = False
-    request_type: RequestType = RequestType.NORMAL
-    callback_params: dict = None  # param name -> CallbackInfo
+    def __init__(self, target: str, namespace: str='', node: Optional[str]=None, params: Optional[dict]=None,  # param name -> value
+                 callback_request_id: Optional[int]=None, raw_binary: bool=False, data: Optional[bytearray]=None, 
+                 acknowledge: bool=False, request_type: RequestType=RequestType.NORMAL, 
+                 callback_params: Optional[dict]=None # param name -> CallbackInfo
+                 ):
+        RequestBase.__init__(self, target, namespace, node, params, callback_request_id, raw_binary, data)
+        self.acknowledge = acknowledge
+        self.request_type = request_type
+        self.callback_params = callback_params
 
-    def __post_init__(self):
-        self.validate()
-
-    def validate(self):
         normal_params = set(self.params.keys()) if self.params else set()
         cb_params = set(self.callback_params.keys()) if self.callback_params else set()
         duplicates = normal_params.intersection(cb_params)
@@ -103,28 +106,33 @@ class OutgoingNotification(RequestBase):
     pass
 
 
-@dataclass
-class ResponseBase:
-    request_id: int = None   # default required for micropython
-    response_type: ResponseType = ResponseType.NORMAL
-    acknowledge: bool = False
-    raw_binary: bool = False
-    final: FinalType = None   # only relevent to multipart responses
+class ResponseBase(EventBase):
+    def __init__(self, request_id: int, response_type: ResponseType=ResponseType.NORMAL, acknowledge: bool=False,
+                 raw_binary: bool=False, final: Optional[FinalType]=None   # only relevent to multipart responses
+                 ):
+        self.request_id = request_id
+        self.response_type = response_type
+        self.acknowledge = acknowledge
+        self.raw_binary = raw_binary
+        self.final = final
 
 
-@dataclass
 class OutgoingResponse(ResponseBase):
-    result: Any = None
+    def __init__(self, request_id: int, result: Any=None, response_type: ResponseType=ResponseType.NORMAL, acknowledge: bool=False,
+                 raw_binary: bool=False, final: Optional[FinalType]=None    # only relevent to multipart responses
+                 ):
+        ResponseBase.__init__(self, request_id, response_type, acknowledge, raw_binary, final)
+        self.result = result
 
 
-@dataclass
-class MessageSentEvent:
-    request_id: int = None
+class MessageSentEvent(EventBase):
+    def __init__(self, request_id: int):
+        self.request_id = request_id
 
 
-@dataclass
-class AcknowledgeBase:
-    request_id: int = None
+class AcknowledgeBase(EventBase):
+    def __init__(self, request_id: int):
+        self.request_id = request_id
 
 
 class OutgoingAcknowledge(AcknowledgeBase):
@@ -141,61 +149,71 @@ class MtpeExceptionCategory(StrEnum):
     TRANSPORT = 't'  # some kind of transport error, or parse error.  # FIXME: Do we need this? Does this make sense?
 
 
-@dataclass
 class MtpeExceptionInfo:
-    category: MtpeExceptionCategory = None
-    type: str = None
-    msg: str = None
-    details: str = ''
-    value: int = None
+    def __init__(self, category: MtpeExceptionCategory, type: str, msg: str, details: str = '', value: Optional[int]=None):
+        self.category = category
+        self.type = type
+        self.msg = msg
+        self.details = details
+        self.value = value
 
 
-@dataclass
 class OutgoingException(ResponseBase):
-    exc_info: MtpeExceptionInfo = None
-
-    def __post_init__(self):
-        if self.exc_info is None:
-            raise ValueError('exc_info is required')
+    def __init__(self, request_id: int, exc_info: MtpeExceptionInfo):
+        ResponseBase.__init__(self, request_id)
+        self.exc_info = exc_info
 
 
-@dataclass
 class IncomingRequest(OutgoingRequest):
-    id: int = None
+    def __init__(self, id: int, target: str, namespace: str='', node: Optional[str]=None, params: Optional[dict]=None,  # param name -> value
+                 callback_request_id: Optional[int]=None, raw_binary: bool=False, data: Optional[bytearray]=None, 
+                 acknowledge: bool=False, request_type: RequestType=RequestType.NORMAL, 
+                 callback_params: Optional[dict]=None # param name -> CallbackInfo
+                 ):
+        OutgoingRequest.__init__(self, target, namespace, node, params, callback_request_id, raw_binary, data, 
+                 acknowledge, request_type, callback_params)
+        self.id = id
 
 
-@dataclass
 class IncomingNotification(OutgoingNotification):
-    id: int = None
+    def __init__(self, target: str, namespace: str='', node: Optional[str]=None, params: Optional[dict]=None,  # param name -> value
+                 callback_request_id: Optional[int]=None, raw_binary: bool=False, data: Optional[bytearray]=None,  # only set / valid if raw_binary = True
+                 id: Optional[int]=None
+                 ):
+        OutgoingNotification.__init__(self, target, namespace, node, params, callback_request_id, raw_binary, data)
+        self.id = id  # FIXME: Should notifications even store an id. Maybe rename to nofication_id
 
 
-@dataclass
 class IncomingResponse(ResponseBase):
-    id: int = None
-    result: Any = None
+    def __init__(self, request_id: int, response_type: ResponseType=ResponseType.NORMAL, acknowledge: bool=False,
+                 raw_binary: bool=False, final: Optional[FinalType]=None, result: Any=None, id: Optional[int]=None):
+        ResponseBase.__init__(self, request_id, response_type, acknowledge, raw_binary, final)
+        self.result = result
+        self.id = id
 
 
-@dataclass
 class IncomingException(ResponseBase):
-    id: int = None
-    exc_info: MtpeExceptionInfo = None
+    def __init__(self, request_id: int, exc_info: Optional[MtpeExceptionInfo]=None, acknowledge: bool=False, id: Optional[int]=None):
+        ResponseBase.__init__(self, request_id, acknowledge=acknowledge)
+        self.exc_info = exc_info
+        self.id = id
 
 
-@dataclass(frozen=True)
+# FIXME: Should we even have these? How can they work in an event based system? Maybe for start-tls etc?
 class ControlMsg:
-    msg: str = ''
-    data: bytes = b''
-    def __post_init__(self):
+    def __init__(self, msg: str='', data: bytes = b''):
+        self.msg = msg
+        self.data = data
         self.msg.encode('ascii')  # raises an exception of not a valid ControMsg (ie, non ascii)
 
 
-@dataclass
 class RequestCallbackInfo:
-    func: callable = None
-    param_details: Optional[list[str]] = None   # None = unspecified. FIXME: just using None for now. Do we want to send types too? 
+    def __init__(self, func: Callable, param_details: Optional[list[str]]=None):
+        self.func = func
+        self.param_details = param_details    # None = unspecified. FIXME: just using None for now. Do we want to send types too? 
 
 
-@dataclass
 class IterableCallbackInfo:
-    iter: Iterable = None
-    return_details: Any = None   # FIXME: This is not done yet.
+    def __init__(self, iter: Iterable, return_details: Any=None):
+        self.iter = iter
+        self.return_details = return_details   # FIXME: This is not done yet.

@@ -3,12 +3,8 @@ from __future__ import annotations
 from collections import defaultdict
 import inspect
 import logging
-from typing import Iterable
+from typing import Iterable, Callable, Optional
 
-try:
-    from dataclasses import dataclass
-except ImportError:
-    from udataclasses import dataclass  # type: ignore (for micropython)
 
 
 __all__ = ['FuncInfo', 'FunctionRegister', 'default_func_register', 'MsgChannelRegister', 'global_channel_register']
@@ -17,20 +13,25 @@ __all__ = ['FuncInfo', 'FunctionRegister', 'default_func_register', 'MsgChannelR
 log = logging.getLogger(__name__)
 
 
-@dataclass
 class FuncInfo:
-    target_name: str = ''
-    namespace: str = ''
-    auth_groups: list[str] = None  # FIXME: maybe something more general, like tags.
-    multipart_response: bool = False
-    func: callable = None
-    non_blocking: bool = False  # set to true for non-async functions that are exported but can be used directly in async code as they don't block
-    iterable_callback: Iterable = None   # only one of func or iterable_callback should be set
-    injectable_params: dict = None       # param name to callable that returns the injected param.
+    def __init__(self, target_name: str, namespace: str = '', auth_groups: Optional[list[str]]=None, multipart_response: bool=False,
+                 func: Optional[Callable]=None, non_blocking: bool=False, iterable_callback: Optional[Iterable]=None,  
+                 injectable_params: Optional[dict]=None):
+        self.target_name = target_name
+        self.namespace = namespace
+        self.auth_groups = auth_groups # FIXME: maybe something more general, like tags.
+        self.multipart_response = multipart_response
+        self.func= func
+        self.non_blocking = non_blocking # set to true for non-async functions that are exported but can be used directly in async code as they don't block
+        self.iterable_callback = iterable_callback
+        self.injectable_params = injectable_params  # param name to callable that returns the injected param.
+
+        if self.func and self.iterable_callback:
+            raise ValueError('only one of func or iterable_callback can be set')
 
 
 class FunctionRegister:
-    def __init__(self, namespace: str = None):
+    def __init__(self, namespace: str=''):
         self.namespace = namespace if namespace else ''
         self._register = dict()   # dict[namespace][target_name] -> FuncInfo
         
@@ -59,7 +60,7 @@ class FunctionRegister:
         self._register[namespace][target_name] = func_info
         log.debug(f'Registered {func_info}')
 
-    def get_method_info(self, target_name, namespace=None) -> FuncInfo:
+    def get_method_info(self, target_name, namespace=None) -> Optional[FuncInfo]:
         try:
             return self._register[namespace][target_name]
         except KeyError:
