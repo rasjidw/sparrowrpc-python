@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from binarychain import BinaryChain
 
@@ -32,9 +32,9 @@ class ProtocolEngine(ProtocolEngineBase):
     _sig = 'hs'
     max_bc_length = 1   # params or result (prefix not counted)
     def __init__(self, required_chain_prefix=''):
+        ProtocolEngineBase.__init__(self, always_send_ids=False)
         self.required_chain_prefix = required_chain_prefix
         self.message_id = 1
-        self.always_send_ids = False
 
         self._make_map = {OutgoingRequest: self._make_out_request,
                           OutgoingNotification: self._make_out_notification,
@@ -74,14 +74,14 @@ class ProtocolEngine(ProtocolEngineBase):
             raise ValueError('Only normal requests supported with this engine')
         if message.acknowledge:
             raise ValueError('Acknowlege not supported with this engine.')
-        data = dict(method=self._make_method_name(message), id=message_id)
+        data: Dict[str, Any] = dict(method=self._make_method_name(message), id=message_id)
         if message.params:
             data['params'] = message.params
         return data
         
     def _make_out_notification(self, message: OutgoingNotification, message_id: Optional[int]):
         self._check_supported_request(message)
-        data = dict(method=self._make_method_name(message))
+        data: Dict[str, Any] = dict(method=self._make_method_name(message))
         if message.params:
             data['params'] = message.params
         return data
@@ -99,7 +99,7 @@ class ProtocolEngine(ProtocolEngineBase):
     def _make_out_except(self, message: OutgoingException, message_id: int):
         self._check_supported_response(message)
         exc_info = message.exc_info
-        except_data = {'cat': str(exc_info.category), 'type': exc_info.type}
+        except_data: Dict[str, Any] = {'cat': str(exc_info.category), 'type': exc_info.type}
         if exc_info.msg:
             except_data['msg'] = exc_info.msg
         if exc_info.details:

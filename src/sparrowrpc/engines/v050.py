@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any, Union, Tuple
 
 from binarychain import BinaryChain
 
@@ -37,8 +37,8 @@ class ProtocolEngine(ProtocolEngineBase):
                     }
     flags = {'a': 'acknowledge', 'b': 'raw_binary'}
     def __init__(self, serialiser: BaseSerialiser, always_send_ids=False):
+        ProtocolEngineBase.__init__(self, always_send_ids=always_send_ids)
         self.serialiser = serialiser
-        self.always_send_ids = always_send_ids  # if true, always add ids. Otherwise just when needed (requests, or when an acknowledgement is requested).
         self.message_id = 1
 
         self._make_map = {OutgoingRequest: self._make_out_request,
@@ -102,7 +102,7 @@ class ProtocolEngine(ProtocolEngineBase):
         marker_chrs = ['n']
         if message.raw_binary:
             marker_chrs.append('b')
-        envelope_data = {''.join(marker_chrs): message.target}
+        envelope_data: Dict[str, Any] = {''.join(marker_chrs): message.target}
         if message_id:  # message_id is optional for Notifications, but can be assigned for logging purposes etc
             envelope_data['i'] = message_id             
         if message.node:
@@ -136,11 +136,11 @@ class ProtocolEngine(ProtocolEngineBase):
         marker = 'x'
         if message.acknowledge:
             marker += 'a'
-        envelope_data = {marker: message.request_id}
+        envelope_data: Dict[str, Any] = {marker: message.request_id}
         if message_id is not None:
             envelope_data['i'] = message_id
         exc_info = message.exc_info
-        except_data = {'cat': str(exc_info.category), 'type': exc_info.type}
+        except_data: Dict[str, Any] = {'cat': str(exc_info.category), 'type': exc_info.type}
         if exc_info.msg:
             except_data['msg'] = exc_info.msg
         if exc_info.details:
@@ -175,7 +175,9 @@ class ProtocolEngine(ProtocolEngineBase):
             return message
         if isinstance(message, IncomingRequest):
             if message.raw_binary:
-                message.data = raw_contents[0]
+                data = raw_contents[0]
+                assert isinstance(data, bytearray)
+                message.data = data
                 return message
             
             # normal params (not raw binary)
@@ -194,7 +196,9 @@ class ProtocolEngine(ProtocolEngineBase):
             return message
         if isinstance(message, IncomingNotification):
             if message.raw_binary:
-                message.data = raw_contents[0]
+                data = raw_contents[0]
+                assert isinstance(data, bytearray)
+                message.data = data
                 return message
             
             # normal params (not raw binary)
@@ -262,7 +266,7 @@ class ProtocolEngine(ProtocolEngineBase):
             raise ProtocolError(f'extra keys found: {data.keys()}')
         return result
     
-    def _get_request_response_type(self, cls: type, type_flags: set):
+    def _get_request_response_type(self, cls: type, type_flags: set) -> Tuple[str, Union[RequestType, ResponseType]]:
         if len(type_flags) != 1:
             raise ValueError('Invalid type_flags state')
         type_chr = type_flags.pop()
@@ -270,6 +274,7 @@ class ProtocolEngine(ProtocolEngineBase):
             return 'request_type', RequestType(type_chr)
         if cls is IncomingResponse:
             return 'response_type', ResponseType(type_chr)
+        raise ValueError(f'Invalid cls of {cls!s}')
 
     def get_system_register(self):
         register = FunctionRegister(namespace='#sys')

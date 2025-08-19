@@ -14,6 +14,9 @@ log = logging.getLogger(__name__)
 
 
 class ProtocolEngineBase(ABC):
+    def __init__(self, always_send_ids: bool):
+        self.always_send_ids = always_send_ids   # if true, always add ids. Otherwise just when needed (requests, or when an acknowledgement is requested).
+
     @abstractmethod
     def outgoing_message_to_binary_chain(self, message: RequestBase, message_id: int):
         raise NotImplementedError()
@@ -24,6 +27,10 @@ class ProtocolEngineBase(ABC):
 
     @abstractmethod
     def parse_incoming_message(self, incoming_bin_chain: BinaryChain):
+        raise NotImplementedError()
+    
+    @abstractmethod
+    def get_system_register(self):
         raise NotImplementedError()
 
 
@@ -121,6 +128,7 @@ class MsgChannelBase:
             if (isinstance(message, IncomingRequest) or isinstance(message, IncomingNotification)) and message.callback_request_id:
                 request_id = message.callback_request_id
             else:
+                assert isinstance(message, (IncomingResponse, IncomingException))
                 request_id = message.request_id
             if isinstance(message, IncomingResponse):
                 if message.response_type == ResponseType.NORMAL:
