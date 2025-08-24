@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
+from collections import OrderedDict
 import json
 import pathlib
 
 
 DEPS = [
     ["__future__", "latest"],
+    ["abc", "latest"],
     ["collections", "latest"],
     ["collections-defaultdict", "latest"],
     ["datetime", "latest"],
@@ -16,7 +18,6 @@ DEPS = [
     ["traceback", "latest"],
     ["github:rasjidw/binarychain-python", "main"],
     ["github:josverl/micropython-stubs/mip/typing.py", "main"],
-    ["github:rasjidw/udataclasses", "main"]
 ]
 
 
@@ -52,7 +53,8 @@ def main():
                 dst_path = dst_relative / filename
                 urls.append([str(dst_path), GITHUB_REPO + str(src_path)])
 
-    package_data = dict(urls=urls, deps=DEPS)
+    urls.sort()
+    package_data = OrderedDict(urls=urls, deps=DEPS)
     with open('package.json', 'w') as f:
         json.dump(package_data, f, indent=2)
 

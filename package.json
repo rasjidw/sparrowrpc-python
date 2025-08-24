@@ -5,68 +5,28 @@
       "github:rasjidw/sparrowrpc-python/micropython/enum.py"
     ],
     [
-      "uabc.py",
-      "github:rasjidw/sparrowrpc-python/micropython/uabc.py"
-    ],
-    [
-      "uasync/queues.py",
-      "github:rasjidw/sparrowrpc-python/micropython/uasync/queues.py"
-    ],
-    [
-      "uasync/__init__.py",
-      "github:rasjidw/sparrowrpc-python/micropython/uasync/__init__.py"
-    ],
-    [
-      "sparrowrpc/decorators.py",
-      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/decorators.py"
-    ],
-    [
-      "sparrowrpc/bases.py",
-      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/bases.py"
-    ],
-    [
-      "sparrowrpc/exceptions.py",
-      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/exceptions.py"
-    ],
-    [
-      "sparrowrpc/messages.py",
-      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/messages.py"
-    ],
-    [
       "sparrowrpc/__init__.py",
       "github:rasjidw/sparrowrpc-python/src/sparrowrpc/__init__.py"
-    ],
-    [
-      "sparrowrpc/registers.py",
-      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/registers.py"
-    ],
-    [
-      "sparrowrpc/pyscript.py",
-      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/pyscript.py"
-    ],
-    [
-      "sparrowrpc/lib.py",
-      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/lib.py"
     ],
     [
       "sparrowrpc/asyncio/__init__.py",
       "github:rasjidw/sparrowrpc-python/src/sparrowrpc/asyncio/__init__.py"
     ],
     [
-      "sparrowrpc/asyncio/transports/websockets.py",
-      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/asyncio/transports/websockets.py"
-    ],
-    [
       "sparrowrpc/asyncio/transports/__init__.py",
       "github:rasjidw/sparrowrpc-python/src/sparrowrpc/asyncio/transports/__init__.py"
     ],
     [
-      "sparrowrpc/serialisers/__init__.py",
-      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/serialisers/__init__.py"
+      "sparrowrpc/asyncio/transports/websockets.py",
+      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/asyncio/transports/websockets.py"
     ],
     [
-      "sparrowrpc/engines/v050.py",
-      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/engines/v050.py"
+      "sparrowrpc/bases.py",
+      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/bases.py"
+    ],
+    [
+      "sparrowrpc/decorators.py",
+      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/decorators.py"
     ],
     [
       "sparrowrpc/engines/__init__.py",
@@ -75,11 +35,51 @@
     [
       "sparrowrpc/engines/hs.py",
       "github:rasjidw/sparrowrpc-python/src/sparrowrpc/engines/hs.py"
+    ],
+    [
+      "sparrowrpc/engines/v050.py",
+      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/engines/v050.py"
+    ],
+    [
+      "sparrowrpc/exceptions.py",
+      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/exceptions.py"
+    ],
+    [
+      "sparrowrpc/lib.py",
+      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/lib.py"
+    ],
+    [
+      "sparrowrpc/messages.py",
+      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/messages.py"
+    ],
+    [
+      "sparrowrpc/pyscript.py",
+      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/pyscript.py"
+    ],
+    [
+      "sparrowrpc/registers.py",
+      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/registers.py"
+    ],
+    [
+      "sparrowrpc/serialisers/__init__.py",
+      "github:rasjidw/sparrowrpc-python/src/sparrowrpc/serialisers/__init__.py"
+    ],
+    [
+      "uasync/__init__.py",
+      "github:rasjidw/sparrowrpc-python/micropython/uasync/__init__.py"
+    ],
+    [
+      "uasync/queues.py",
+      "github:rasjidw/sparrowrpc-python/micropython/uasync/queues.py"
     ]
   ],
   "deps": [
     [
       "__future__",
+      "latest"
+    ],
+    [
+      "abc",
       "latest"
     ],
     [
@@ -120,10 +120,6 @@
     ],
     [
       "github:josverl/micropython-stubs/mip/typing.py",
-      "main"
-    ],
-    [
-      "github:rasjidw/udataclasses",
       "main"
     ]
   ]
