@@ -6,7 +6,7 @@ import sys
 
 from binarychain import BinaryChain
 
-from sparrowrpc.messages import IncomingException, IncomingNotification, IncomingRequest, IncomingResponse, MtpeExceptionCategory, MtpeExceptionInfo, OutgoingAcknowledge, OutgoingException, OutgoingRequest, OutgoingResponse, RequestBase, RequestType, ResponseType
+from sparrowrpc.messages import IncomingAcknowledge, IncomingException, IncomingNotification, IncomingRequest, IncomingResponse, MtpeExceptionCategory, MtpeExceptionInfo, OutgoingAcknowledge, OutgoingException, OutgoingRequest, OutgoingResponse, RequestBase, RequestType, ResponseType
 from sparrowrpc.registers import FuncInfo, FunctionRegister, default_func_register, global_channel_register
 
 
@@ -128,7 +128,7 @@ class MsgChannelBase:
             if (isinstance(message, IncomingRequest) or isinstance(message, IncomingNotification)) and message.callback_request_id:
                 request_id = message.callback_request_id
             else:
-                assert isinstance(message, (IncomingResponse, IncomingException))
+                assert isinstance(message, (IncomingResponse, IncomingException, IncomingAcknowledge))
                 request_id = message.request_id
             if isinstance(message, IncomingResponse):
                 if message.response_type == ResponseType.NORMAL:
