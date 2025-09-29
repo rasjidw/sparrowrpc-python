@@ -32,7 +32,8 @@ from ..bases import ProtocolEngineBase
 
 from ..messages import (FinalType, IncomingAcknowledge, IncomingException, IncomingNotification, IncomingRequest, IncomingResponse, IterableCallbackInfo,
                         MessageSentEvent, MtpeExceptionCategory, MtpeExceptionInfo, OutgoingAcknowledge, OutgoingException,
-                        OutgoingNotification, OutgoingRequest, OutgoingResponse, RequestBase, RequestCallbackInfo, RequestType, ResponseType)
+                        OutgoingNotification, OutgoingRequest, OutgoingResponse, RequestBase, RequestCallbackInfo, RequestType, ResponseType,
+                        TransportEvent)
 
 from ..exceptions import CallerException, CalleeException
 
@@ -94,7 +95,7 @@ class ThreadedTransportBase(ABC):
         while True:
             try:
                 data = self._read_data(self.read_buf_size)
-                if data:
+                if isinstance(data, (bytearray, bytes)):
                     for incoming_chain in self.chain_reader.get_binary_chains(data):
                         queue_data = (incoming_chain, self.chain_reader.complete(), self.remote_closed)
                         log.debug(f'Put Incoming queue_data: {queue_data}')

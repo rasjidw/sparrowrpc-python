@@ -10,8 +10,6 @@ else:
     from backports.strenum import StrEnum # type: ignore
 
 
-
-
 __all__ = ['RequestType', 'ResponseType', 'FinalType', 'PushIterableInfo', 'RequestBase', 'OutgoingRequest', 
            'OutgoingNotification', 'ResponseBase', 'OutgoingResponse', 'MessageSentEvent', 'AcknowledgeBase',
            'OutgoingAcknowledge', 'IncomingAcknowledge', 'MtpeExceptionCategory', 'MtpeExceptionInfo', 
@@ -61,9 +59,41 @@ class EventBase:
         return self.__dict__.items()
     
     def __repr__(self):
-        items = (f"{k}={v!r}" for k, v in self._properties if not k.startswith('_'))
-        return f"<{self.__class__.__name__}: {', '.join(items)}>"
+        items = [f"{k}={v!r}" for k, v in self._properties if not k.startswith('_')]
+        if items:
+            return f"<{self.__class__.__name__}: {', '.join(items)}>"
+        else:
+            return f"<{self.__class__.__name__}>"
 
+
+class TransportEvent(EventBase):
+    pass
+
+
+class TransportClosedEvent(TransportEvent):
+    def __init__(self, closing_end: str):
+        if closing_end not in ('remote', 'local'):
+            raise ValueError()
+        self.closing_end = closing_end
+        
+    def raise_as_exception(self):
+        raise TransportClosedError(self.closing_end)
+
+
+class TransportBrokenEvent(TransportEvent):
+    def __init__(self, original_exc: Exception):
+        self.original_exc = original_exc
+
+    def raise_as_exception(self):
+        raise TransportBrokenError(self.original_exc)
+
+
+class TransportClosedError(TransportClosedEvent, Exception):
+    pass
+
+
+class TransportBrokenError(TransportBrokenEvent, Exception):
+    pass
 
 
 class RequestBase(EventBase):

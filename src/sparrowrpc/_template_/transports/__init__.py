@@ -38,7 +38,7 @@ from ...bases import ProtocolEngineBase
 from ...engines import hs
 if not running_micropython:
     from ...lib import SignalHandlerInstaller, detect_unix_socket_in_use
-from ...messages import IncomingRequest, IncomingResponse, OutgoingRequest, OutgoingResponse
+from ...messages import IncomingRequest, IncomingResponse, OutgoingRequest, OutgoingResponse, TransportClosedEvent, TransportBrokenEvent
 
 from ..._template_ import _Template_MsgChannel, _Template_TransportBase
 
@@ -194,13 +194,17 @@ class _Template_TcpTransport(_Template_TransportBase):
     def _read_data(self, size):
         try:
             data = self.socket.recv(size)
-            return data
+            if not data:
+                return TransportClosedEvent('remote')
+            else:
+                return data
         except Exception as e:
             if self.closing_socket:
                 # windows and micropython return errors once the socket is closed
-                # just return ''
-                return ''
-            raise
+                # just return 
+                return TransportClosedEvent('local')
+            else:
+                return TransportBrokenEvent(e)
 
     def _write_data(self, data):
         log.debug(f'Sending data: {data}')
@@ -222,13 +226,18 @@ class AsyncTcpTransport(_Template_TransportBase):
 
     async def _read_data(self, size):
         try:
-            return await self.stream_reader.read(size)
-        except Exception:
+            data = await self.stream_reader.read(size)
+            if not data:
+                return TransportClosed()
+            else:
+                return data
+        except Exception as e:
             if self.closing_socket:
                 # windows and micropython return errors once the socket is closed
-                # just return ''
-                return ''
-            raise
+                # just return 
+                return TransportClosed()
+            else:
+                return TransportError(str(e), e)
 
     async def _write_data(self, data):
         log.debug(f'Sending data: {data}')
