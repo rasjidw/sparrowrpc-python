@@ -43,7 +43,7 @@ if have_msgpack:
         sig = 'MP'
         # using dumps and loads for micropython compatibility
         def serialise(self, obj_data: Any) -> bytes:
-            return msgpack.dumps(obj_data)
+            return msgpack.dumps(obj_data) # type: ignore
         def deserialise(self, bin_data: bytes) -> Any:
             return msgpack.loads(bin_data)
 
