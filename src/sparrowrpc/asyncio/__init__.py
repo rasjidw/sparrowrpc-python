@@ -8,12 +8,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 import inspect
 import logging
 import sys
+from typing import Callable
 
-from ..bases import MsgChannelBase
+from ..bases import MsgChannelBase, DEFAULT_SERIALISER_SIG, DEFAULT_ENCODER_TAG
 
 from ..registers import FuncInfo
 
@@ -27,20 +28,17 @@ except (AttributeError, ImportError):
 # FIXME: add back ThreadPoolExecutor for non-micropython
 # also add @non_blocking decorator
 #from concurrent.futures import ThreadPoolExecutor
-from typing import AsyncIterable as Iterable
-from traceback import format_exc, print_exc
-from typing import Any, TYPE_CHECKING
 
+from traceback import format_exc
 
 from binarychain import BinaryChain, ChainReader
 
 
-from ..bases import ProtocolEngineBase
+from ..engine import ProtocolEngine
 
-from ..messages import (FinalType, IncomingAcknowledge, IncomingException, IncomingNotification, IncomingRequest, IncomingResponse, IterableCallbackInfo,
-                        MessageSentEvent, MtpeExceptionCategory, MtpeExceptionInfo, OutgoingAcknowledge, OutgoingException,
-                        OutgoingNotification, OutgoingRequest, OutgoingResponse, RequestBase, RequestCallbackInfo, RequestType, ResponseType,
-                        TransportEvent)
+from ..messages import (FinalType, Acknowledge, ExceptionResponse, Notification, Request, Response,
+                        IterableCallbackInfo, MessageSentEvent, ExceptionCategory, ExceptionInfo, CallBase,
+                        RequestCallbackInfo, RequestType, ResponseType, MessageBase)
 
 from ..exceptions import CallerException, CalleeException
 
@@ -48,6 +46,7 @@ from ..exceptions import CallerException, CalleeException
 log = logging.getLogger(__name__)
 
 
+# noinspection PyUnreachableCode
 def get_thread_or_task_name():
     name_getter = getattr(asyncio.current_task(), 'get_name', None)
     if name_getter:
@@ -65,14 +64,14 @@ def is_awaitable(may_be_awaitable):
 
 
 async def unwrap_result(raw_result):
-    # FIXME: We may not need this once we have the @nonblocking dectorator
-    unwraped_result = raw_result
+    # FIXME: We may not need this once we have the @nonblocking decorator
+    unwrapped_result = raw_result
     while True:
-        if is_awaitable(unwraped_result):
-            unwraped_result = await unwraped_result
+        if is_awaitable(unwrapped_result):
+            unwrapped_result = await unwrapped_result
         else:
             break
-    return unwraped_result
+    return unwrapped_result
 
 
 class AsyncTransportBase(ABC):
@@ -188,7 +187,7 @@ class AsyncTransportBase(ABC):
 
 class AsyncDispatcherBase(ABC):
     @abstractmethod
-    async def dispatch_incoming(self, msg_channel: AsyncMsgChannel, request: RequestBase, func_info: FuncInfo):
+    async def dispatch_incoming(self, msg_channel: AsyncMsgChannel, request: CallBase, func_info: FuncInfo):
         raise NotImplementedError()
     @abstractmethod
     async def shutdown(self, timeout=0):
@@ -196,7 +195,7 @@ class AsyncDispatcherBase(ABC):
 
 
 # FIXME: Turn this into a class
-async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRequest|IncomingNotification, func_info: FuncInfo):
+async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: Request|Notification, func_info: FuncInfo):
     log.debug(f'In async_call_func with {incoming_msg} and {func_info}')
     params = dict()
     injectors = list()
@@ -212,43 +211,43 @@ async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRe
         func = func_info.func
     else:
         log.debug('Calling Iterable __anext__')
+        # noinspection PyUnresolvedReferences
         func = func_info.iterable_callback.__anext__
 
-    if incoming_msg.raw_binary:
-        result = func(incoming_msg.data, **params)
-    else:
-        # normal non-binary request
-        if incoming_msg.params:
-            for param_name, value in incoming_msg.params.items():
-                if param_name in params:
-                    raise ValueError('duplicate param name')  # FIXME: make a caller error
-                params[param_name] = value
-        if isinstance(incoming_msg, IncomingRequest) and incoming_msg.callback_params:
-            for (param_name, cb_data) in incoming_msg.callback_params.items():
-                if param_name in params:
-                    raise ValueError('duplicate param name')  # FIXME: make a caller error
-                assert isinstance(cb_data, dict)
-                proxy_type, cb_param_data = list(cb_data.items())[0]
-                callback_request_id = cb_param_data['callback_request_id']
-                cb_info = cb_param_data['cb_info']
-                if proxy_type == '#cb':
-                    cb_proxy = AsyncCallbackProxy(param_name, callback_request_id, cb_info)
-                elif proxy_type == '#icb':
-                    cb_proxy = AsyncIterableCallbackProxy(param_name, callback_request_id, cb_info)
-                assert isinstance(cb_proxy, CallbackProxyBase)
-                cb_proxy.set_channel(msg_channel)
-                params[param_name] = cb_proxy
-        try:
-            raw_result = func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
-            result = await unwrap_result(raw_result)
-        except StopAsyncIteration:
-            # pass this up, but don't log as this is normal for stopping multipart requests
-            raise 
-        except Exception as e:
-            log.warning('-' * 20)
-            log.warning(format_exc())
-            log.warning('-' * 20)
-            raise
+    # normal non-binary request
+    if incoming_msg.params:
+        for param_name, value in incoming_msg.params.items():
+            if param_name in params:
+                raise ValueError('duplicate param name')  # FIXME: make a caller error
+            params[param_name] = value
+    if isinstance(incoming_msg, Request) and incoming_msg.callback_params:
+        for (param_name, cb_data) in incoming_msg.callback_params.items():
+            if param_name in params:
+                raise ValueError('duplicate param name')  # FIXME: make a caller error
+            assert isinstance(cb_data, dict)
+            proxy_type, cb_param_data = list(cb_data.items())[0]
+            callback_request_id = cb_param_data['callback_request_id']
+            cb_info = cb_param_data['cb_info']
+            if proxy_type == '#cb':
+                cb_proxy = AsyncCallbackProxy(param_name, callback_request_id, cb_info)
+            elif proxy_type == '#icb':
+                cb_proxy = AsyncIterableCallbackProxy(param_name, callback_request_id, cb_info)
+            else:
+                raise ValueError(f'Invalid callback proxy type {proxy_type}')
+            assert isinstance(cb_proxy, CallbackProxyBase)
+            cb_proxy.set_channel(msg_channel)
+            params[param_name] = cb_proxy
+    try:
+        raw_result = func(**params)  # FIXME - should put in thread pool if not flagged as non-blocking.
+        result = await unwrap_result(raw_result)
+    except StopAsyncIteration:
+        # pass this up, but don't log as this is normal for stopping multipart requests
+        raise
+    except Exception as e:
+        log.warning('-' * 20)
+        log.warning(format_exc())
+        log.warning('-' * 20)
+        raise
 
     # FIXME: Currently the post_call_cleanup is missed if there is an exception
     for injector in injectors:
@@ -256,32 +255,49 @@ async def async_call_func(msg_channel: AsyncMsgChannel, incoming_msg: IncomingRe
         await injector.post_call_cleanup()
     return result
 
-async def async_run_request_wait_to_complete(msg_channel: AsyncMsgChannel, request: IncomingRequest,
+async def async_run_request_wait_to_complete(msg_channel: AsyncMsgChannel, request: Request,
                                                   func_info: FuncInfo, completed_callback=None):
     try:
         if func_info.multipart_response:
             async for part_result in await async_call_func(msg_channel, request, func_info):
-                outgoing_msg = OutgoingResponse(request_id=request.id, result=part_result, response_type=ResponseType.MULTIPART)
+                outgoing_msg = Response(request_id=request.message_id, result=part_result,
+                                        response_type=ResponseType.MULTIPART,
+                                        envelope_serialisation_code=request.envelope_serialisation_code,
+                                        payload_serialisation_code=request.payload_serialisation_code,
+                                        protocol_version=request.protocol_version)
                 await msg_channel._send_message(outgoing_msg)
-            final_response = OutgoingResponse(request_id=request.id, response_type=ResponseType.MULTIPART, final=FinalType.TERMINATOR)
+            final_response = Response(request_id=request.message_id, response_type=ResponseType.MULTIPART,
+                                      final=FinalType.TERMINATOR,
+                                      envelope_serialisation_code=request.envelope_serialisation_code,
+                                      payload_serialisation_code=request.payload_serialisation_code,
+                                      protocol_version=request.protocol_version)
             await msg_channel._send_message(final_response)
         else:
             result = await async_call_func(msg_channel, request, func_info)
             if request.request_type == RequestType.QUIET:
                 # never send the result to quiet requests.
                 result = None
-            outgoing_msg = OutgoingResponse(request_id=request.id, result=result)
+            outgoing_msg = Response(request_id=request.message_id, result=result,
+                                    envelope_serialisation_code=request.envelope_serialisation_code,
+                                    payload_serialisation_code=request.payload_serialisation_code,
+                                    protocol_version=request.protocol_version)
             await msg_channel._send_message(outgoing_msg)
     except Exception as e:
         if func_info.iterable_callback and isinstance(e, StopAsyncIteration):
-            outgoing_msg = OutgoingResponse(request_id=request.id, result=None, final=FinalType.TERMINATOR)
+            outgoing_msg = Response(request_id=request.message_id, result=None, final=FinalType.TERMINATOR,
+                                    envelope_serialisation_code=request.envelope_serialisation_code,
+                                    payload_serialisation_code=request.payload_serialisation_code,
+                                    protocol_version=request.protocol_version)
         else:
             log.debug(format_exc())
             if isinstance(e, CallerException):
-                exc_info = MtpeExceptionInfo(category=MtpeExceptionCategory.CALLER, type=type(e).__name__, msg=str(e))
+                exc_info = ExceptionInfo(category=ExceptionCategory.CALLER, exc_type=type(e).__name__, msg=str(e))
             else:
-                exc_info = MtpeExceptionInfo(category=MtpeExceptionCategory.CALLEE, type=type(e).__name__, msg=str(e))
-            outgoing_msg = OutgoingException(request_id=request.id, exc_info=exc_info) 
+                exc_info = ExceptionInfo(category=ExceptionCategory.CALLEE, exc_type=type(e).__name__, msg=str(e))
+            outgoing_msg = ExceptionResponse(request_id=request.message_id, exc_info=exc_info,
+                                             envelope_serialisation_code=request.envelope_serialisation_code,
+                                             protocol_version=request.protocol_version
+                                             )
         await msg_channel._send_message(outgoing_msg)
 
     if completed_callback:
@@ -292,17 +308,17 @@ async def async_run_request_wait_to_complete(msg_channel: AsyncMsgChannel, reque
             log.error(f'Error calling completed_callback: {e!s}')
 
 
-async def async_run_request_not_waiting(msg_channel: AsyncMsgChannel, request: IncomingRequest|IncomingNotification, 
+async def async_run_request_not_waiting(msg_channel: AsyncMsgChannel, request: Request|Notification,
                                              func_info: FuncInfo, completed_callback=None):
     try:
-        # we send a response (with no data) to slient requests (before calling the function), but nothing for notifications.
-        if isinstance(request, IncomingRequest) and request.request_type == RequestType.SILENT:
-            outgoing_msg = OutgoingResponse(request_id=request.id)
+        # we send a response (with no data) to silent requests (before calling the function), but nothing for notifications.
+        if isinstance(request, Request) and request.request_type == RequestType.SILENT:
+            outgoing_msg = Response(request_id=request.message_id)
             await msg_channel._send_message(outgoing_msg)
 
         await async_call_func(msg_channel, request, func_info)
     except Exception as e:
-        # FIXME - make notification and slient errors available to the client software
+        # FIXME - make notification and silent errors available to the client software
         log.warning(f'Notification or Silent Request {request} raised error {str(e)}')
 
     if completed_callback:
@@ -315,12 +331,12 @@ async def async_run_request_not_waiting(msg_channel: AsyncMsgChannel, request: I
 
 async def async_dispatch_request_or_notification(msg_channel, incoming_msg, func_info, completed_callback=None):
     try:
-        if isinstance(incoming_msg, IncomingRequest):
+        if isinstance(incoming_msg, Request):
             if incoming_msg.request_type == RequestType.SILENT:
                 await async_run_request_not_waiting(msg_channel, incoming_msg, func_info, completed_callback)
             else:
                 await async_run_request_wait_to_complete(msg_channel, incoming_msg, func_info, completed_callback)
-        elif isinstance(incoming_msg, IncomingNotification):
+        elif isinstance(incoming_msg, Notification):
             await async_run_request_not_waiting(msg_channel, incoming_msg, func_info, completed_callback)
         else:
             log.warning(f'Got unhandled message {incoming_msg}')
@@ -387,7 +403,8 @@ class AsyncDispatcher(AsyncDispatcherBase):
         except Exception:
             log.error(f'ERROR: Unable to put task {task} onto completed_tasks_queue.')
 
-    async def dispatch_incoming(self, msg_channel: AsyncMsgChannel, request: RequestBase, func_info: FuncInfo):
+    async def dispatch_incoming(self, msg_channel: AsyncMsgChannel, request: Request|Notification,
+                                func_info: FuncInfo):
         queue_item = (msg_channel, request, func_info)
         await self.incoming_queue.put(queue_item)
 
@@ -406,8 +423,12 @@ class AsyncDispatcher(AsyncDispatcherBase):
 
 
 class AsyncMsgChannel(MsgChannelBase):
-    def __init__(self, transport: AsyncTransportBase, initiator: bool, engine: ProtocolEngineBase, dispatcher: AsyncDispatcherBase, channel_tag='', func_registers=None, channel_register=None):
-        super().__init__(initiator, engine, channel_tag, func_registers, channel_register)
+    def __init__(self, transport: AsyncTransportBase, initiator: bool, engine: ProtocolEngine,
+                 dispatcher: AsyncDispatcherBase, default_serialiser_sig: str=DEFAULT_SERIALISER_SIG,
+                 default_encoder_tag: str=DEFAULT_ENCODER_TAG,
+                 channel_tag='', func_registers=None, channel_register=None):
+        super().__init__(initiator, engine, default_serialiser_sig, default_encoder_tag,
+                         channel_tag, func_registers, channel_register)
         self.transport = transport
         self.dispatcher = dispatcher
         self.request = AsyncRequestProxyMaker(self)
@@ -434,7 +455,7 @@ class AsyncMsgChannel(MsgChannelBase):
             (bin_chain, complete, remote_closed) = await self.transport.incoming_queue.get()
             if bin_chain is None:
                 # NOTE: complete is None is okay, as that is the shutdown marker
-                if complete == False:
+                if not complete:
                     log.warning('Got end of chains but not complete')
                 break
             
@@ -446,10 +467,10 @@ class AsyncMsgChannel(MsgChannelBase):
                 await incoming_callback(message)
         log.debug(f'message pump stopped on thread {get_thread_or_task_name()}')
 
-    async def _dispatch(self, message: IncomingRequest|IncomingNotification):
+    async def _dispatch(self, message: Request|Notification):
         func_info, ack_err_msg = self._get_func_info_and_ack_err_msg(message)
         if ack_err_msg:
-            await self._send_message(OutgoingAcknowledge(request_id=message.id))
+            await self._send_message(Acknowledge(request_id=message.message_id))
         if func_info:
             await self.dispatcher.dispatch_incoming(self, message, func_info)
 
@@ -459,7 +480,17 @@ class AsyncMsgChannel(MsgChannelBase):
             self._message_id += 1
             return message_id
 
-    async def _send_message(self, message, message_event_callback = None, add_id_callback: callable = None):
+    async def _send_message(self, message: MessageBase, message_event_callback = None,
+                            add_id_callback: Callable = None):
+        if hasattr(message, 'message_id') and message.message_id is not None:
+                raise ValueError('message_id must not be pre-set')
+
+        if message.envelope_serialisation_code is None:
+            message.envelope_serialisation_code = self.default_serialiser_sig
+
+        if message.protocol_version is None:
+            message.protocol_version = self.default_encoder_tag
+
         add_id, register_event_callback = self._get_add_id_and_reg_cb(message)
         if add_id:
             message_id = await self._create_message_id()
@@ -470,13 +501,16 @@ class AsyncMsgChannel(MsgChannelBase):
         if register_event_callback:
             self._reg_callback(message_id, message_event_callback)
 
-        bc = self.engine.outgoing_message_to_binary_chain(message, message_id)
+        if message_id:
+            message.message_id = message_id
+
+        bc = self.engine.message_to_binary_chain(message)
         await self.transport.send_binary_chain(bc)
         if message_event_callback:
             await message_event_callback(MessageSentEvent(request_id=message_id))
         return message_id
     
-    async def queue_message(self, message, message_event_callback: callable, add_id_callback: callable = None):
+    async def queue_message(self, message, message_event_callback: Callable, add_id_callback: Callable = None):
         return await self._send_message(message, message_event_callback, add_id_callback)
 
     async def send_shutdown_pending(self):
@@ -497,26 +531,26 @@ class AsyncChannelProxy:
         self.channel = channel
         self._callbacks = defaultdict(dict)   # self._callbacks[request_id][param_name] = cb_info
 
-    async def send_request_multipart_result_as_iterator(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None):
+    async def send_request_multipart_result_as_iterator(self, message: Request, timeout=None, msg_sent_callback=None, ack_callback=None):
         response_pump = AsyncResponsePump(self, msg_sent_callback, ack_callback, expected_response_type=ResponseType.MULTIPART)
         await response_pump.send_message(message, timeout)
         return response_pump
 
-    async def send_request(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None):
+    async def send_request(self, message: Request, timeout=None, msg_sent_callback=None, ack_callback=None):
         response_pump = AsyncResponsePump(self, msg_sent_callback, ack_callback)
         await response_pump.send_message(message, timeout)
         result = await response_pump.__anext__()
         # FIXME: Check complete etc?
         return result
                     
-    async def send_request_for_iter(self, message: OutgoingRequest, timeout=None, msg_sent_callback=None, ack_callback=None):
+    async def send_request_for_iter(self, message: Request, timeout=None, msg_sent_callback=None, ack_callback=None):
         response_pump = AsyncResponsePump(self, msg_sent_callback, ack_callback, callback_iterable=True)
         await response_pump.send_message(message, timeout)
         result = await response_pump.__anext__()
         # FIXME: Check complete etc?
         return result
     
-    async def send_notification(self, message: OutgoingNotification, timeout=None):
+    async def send_notification(self, message: Notification, timeout=None):
         await self._send_message_wait_for_sent_event(message, timeout)
 
     async def _send_message_wait_for_sent_event(self, message, timeout=None):
@@ -527,13 +561,13 @@ class AsyncChannelProxy:
         try:
             await asyncio.wait_for(wait_event.wait(), timeout=timeout)
         except asyncio.TimeoutError:
-            log.error('Timeout error on notificaiton send')  # FIXME: Do we raise an error?
+            log.error('Timeout error on notification send')  # FIXME: Do we raise an error?
 
 
-    async def send_request_raw_async(self, message: OutgoingRequest, event_callback):
+    async def send_request_raw_async(self, message: Request, event_callback):
         reg_id_for_callbacks = None
-        if isinstance(message, OutgoingRequest) and message.callback_params:
-            # avoid a possible race by registring the req_id for any callbacks prior to sending the message 
+        if isinstance(message, Request) and message.callback_params:
+            # avoid a possible race by registering the req_id for any callbacks prior to sending the message
             def reg_id_for_callbacks(req_id):
                 for param_name, cb_info in message.callback_params.items():
                     self._callbacks[req_id][param_name] = cb_info
@@ -541,15 +575,15 @@ class AsyncChannelProxy:
         req_id = await self.channel.queue_message(message, event_callback, add_id_callback = reg_id_for_callbacks)
         return req_id
     
-    async def send_request_wait_via_callbacks(self, message: OutgoingRequest, on_msg_sent=None, on_ack=None, on_result=None):
+    async def send_request_wait_via_callbacks(self, message: Request, on_msg_sent=None, on_ack=None, on_result=None):
         async def event_callback(event):
             if isinstance(event, MessageSentEvent):
                 if on_msg_sent:
                     await on_msg_sent(event)
-            elif isinstance(event, IncomingAcknowledge):
+            elif isinstance(event, Acknowledge):
                 if on_ack:
                     await on_ack(event)
-            elif isinstance(event, IncomingResponse):
+            elif isinstance(event, Response):
                 if on_result:
                     await on_result(event)
             else:
@@ -559,7 +593,8 @@ class AsyncChannelProxy:
 
 # FIXME: Do we just always return the result and event.final??? Makes the API more consistent
 class AsyncResponsePump():
-    def __init__(self, channel_proxy: AsyncChannelProxy, msg_sent_callback=None, ack_callback=None, expected_response_type=ResponseType.NORMAL, 
+    def __init__(self, channel_proxy: AsyncChannelProxy, msg_sent_callback=None, ack_callback=None,
+                 expected_response_type: ResponseType=ResponseType.NORMAL,
                  callback_iterable=False):
         self.channel_proxy = channel_proxy
         
@@ -578,9 +613,9 @@ class AsyncResponsePump():
         await self.return_queue.put(event)
         log.debug(f'Put event {event!s} on return queue')
 
-    async def send_message(self, message: OutgoingRequest, timeout=None):
+    async def send_message(self, message: Request, timeout=None):
         self.timeout = timeout
-        if isinstance(message, OutgoingNotification):
+        if isinstance(message, Notification):
             self.sent_notification = True
         await self.channel_proxy.send_request_raw_async(message, self._cb_reader)
 
@@ -609,13 +644,12 @@ class AsyncResponsePump():
     async def process_response(self, event):
         # check we have an expected NORMAL or MULTIPART response
         if event.response_type != self.expected_response_type:
-            raise ValueError(f'Excpected response type {self.expected_response_type} but got {event.response_type}')
+            raise ValueError(f'Expected response type {self.expected_response_type} but got {event.response_type}')
         if event.response_type == ResponseType.NORMAL:
             if self.callback_iterable:
                 return event.result, event.final
             else:
                 return event.result
-            return
         elif event.response_type == ResponseType.MULTIPART:
             if event.final == FinalType.FINAL:
                 self.complete = True
@@ -625,9 +659,11 @@ class AsyncResponsePump():
                 raise StopAsyncIteration()
             else:
                 return event.result
+        raise RuntimeError(f'Invalid response type for event {event!s}')
             
     async def process_incoming_req_or_notification(self, event):
         try:
+            func_info = None
             cb_info = self.channel_proxy._callbacks[event.callback_request_id][event.target]
             if isinstance(cb_info, RequestCallbackInfo):
                 func_info = FuncInfo(target_name=event.target, func=cb_info.func)
@@ -642,15 +678,15 @@ class AsyncResponsePump():
 
     async def process_incoming_exception(self, event):
         exc_info = event.exc_info
-        assert isinstance(exc_info, MtpeExceptionInfo)
+        assert isinstance(exc_info, ExceptionInfo)
         e = None
-        if exc_info.category == MtpeExceptionCategory.CALLER:
+        if exc_info.category == ExceptionCategory.CALLER:
             for cls in CallerException.get_subclasses():
-                if exc_info.type == cls.__name__:
+                if exc_info.exc_type == cls.__name__:
                     raise cls(exc_info.msg)
-            raise CallerException(f'Type: {exc_info.type}, Msg: {exc_info.msg}')
-        elif exc_info.category == MtpeExceptionCategory.CALLEE:
-            raise CalleeException(f'Type: {exc_info.type}, Msg: {exc_info.msg}')
+            raise CallerException(f'Type: {exc_info.exc_type}, Msg: {exc_info.msg}')
+        elif exc_info.category == ExceptionCategory.CALLEE:
+            raise CalleeException(f'Type: {exc_info.exc_type}, Msg: {exc_info.msg}')
 
     async def get_next_event_with_timeout(self):
         while True:
@@ -672,6 +708,7 @@ class AsyncResponsePump():
                 event = await self.get_next_event_with_timeout()
             except Exception as e:
                 log.error(f'Got exception {str(e)} in __anext__')
+                continue
 
             log.debug(f'Got event in __anext__: {event}')
             if isinstance(event, MessageSentEvent):
@@ -681,25 +718,27 @@ class AsyncResponsePump():
                     raise StopAsyncIteration
                 continue
 
-            if isinstance(event, IncomingAcknowledge):
+            if isinstance(event, Acknowledge):
                 await self.call_ack_callback(event)
                 continue
 
-            if isinstance(event, IncomingResponse):
+            if isinstance(event, Response):
                 return await self.process_response(event)
 
-            if isinstance(event, IncomingRequest) or isinstance(event, IncomingNotification):
+            if isinstance(event, Request) or isinstance(event, Notification):
                 await self.process_incoming_req_or_notification(event)
                 continue
 
-            if isinstance(event, IncomingException):
+            if isinstance(event, ExceptionResponse):
                 await self.process_incoming_exception(event)
 
             log.error(f'Unhandled event {event}')
 
 
 class AsyncRequestProxy:
-    def __init__(self, msg_channel: AsyncMsgChannel, target: str, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_response=False):
+    def __init__(self, msg_channel: AsyncMsgChannel, target: str, namespace: str=None, node: str=None,
+                 request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None,
+                 ack_callback=None, multipart_response=False):
         self._msg_channel = msg_channel
         self._target = target
         self._namespace = namespace
@@ -721,16 +760,23 @@ class AsyncRequestProxy:
                 callback_params[param] = RequestCallbackInfo(func=value)
             else:
                 params[param] = value
-        request = OutgoingRequest(target=self._target, namespace=self._namespace, node=self._node, params=params, callback_params=callback_params, request_type=self._request_type, acknowledge=bool(self._ack_callback))
+        request = Request(target=self._target, namespace=self._namespace, node=self._node, params=params,
+                          callback_params=callback_params, request_type=self._request_type,
+                          acknowledge=bool(self._ack_callback))
         channel_proxy = self._msg_channel.get_proxy()
         if self._multipart_response:
-            return channel_proxy.send_request_multipart_result_as_iterator(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
+            return channel_proxy.send_request_multipart_result_as_iterator(request, timeout=self._timeout,
+                                                                           msg_sent_callback=self._msg_sent_callback,
+                                                                           ack_callback=self._ack_callback)
         else:
-            return channel_proxy.send_request(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback, ack_callback=self._ack_callback)
+            return channel_proxy.send_request(request, timeout=self._timeout, msg_sent_callback=self._msg_sent_callback,
+                                              ack_callback=self._ack_callback)
     
 
 class AsyncRequestProxyMaker:
-    def __init__(self, msg_channel: AsyncMsgChannel, namespace: str=None, node: str=None, request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_response=False):
+    def __init__(self, msg_channel: AsyncMsgChannel, namespace: str=None, node: str=None,
+                 request_type: RequestType=RequestType.NORMAL, timeout: int=None, msg_sent_callback=None,
+                 ack_callback=None, multipart_response=False):
         self._msg_channel = msg_channel
         self._namespace = namespace
         self._node = node
@@ -741,10 +787,14 @@ class AsyncRequestProxyMaker:
         self._multipart_response = multipart_response
 
     def __getattr__(self, target):
-        return AsyncRequestProxy(self._msg_channel, target, self._namespace, self._node, self._request_type, self._timeout, self._msg_sent_callback, self._ack_callback, self._multipart_response)
+        return AsyncRequestProxy(self._msg_channel, target, self._namespace, self._node, self._request_type,
+                                      self._timeout, self._msg_sent_callback, self._ack_callback,
+                                      self._multipart_response)
     
-    def __call__(self, namespace: str=None, node: str=None, request_type: RequestType = RequestType.NORMAL, timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_response=False):
-        return AsyncRequestProxyMaker(self._msg_channel, namespace, node, request_type, timeout, msg_sent_callback, ack_callback, multipart_response)
+    def __call__(self, namespace: str=None, node: str=None, request_type: RequestType = RequestType.NORMAL,
+                 timeout: int=None, msg_sent_callback=None, ack_callback=None, multipart_response=False):
+        return AsyncRequestProxyMaker(self._msg_channel, namespace, node, request_type, timeout, msg_sent_callback,
+                                           ack_callback, multipart_response)
 
 
 
@@ -773,9 +823,11 @@ class AsyncCallbackProxy(CallbackProxyBase):
 
     async def __call__(self, **kwargs):
         if self.request_type:
-            outgoing_msg = OutgoingRequest(target=self._cb_param_name, callback_request_id=self._callback_request_id, params=kwargs, request_type=self.request_type)
+            outgoing_msg = Request(target=self._cb_param_name, callback_request_id=self._callback_request_id,
+                                   params=kwargs, request_type=self.request_type)
         else:
-            outgoing_msg = OutgoingNotification(target=self._cb_param_name, callback_request_id=self._callback_request_id, params=kwargs)
+            outgoing_msg = Notification(target=self._cb_param_name, callback_request_id=self._callback_request_id,
+                                        params=kwargs)
         log.debug(f'Callback Proxy call: {repr(outgoing_msg)}')
         proxy = self._channel.get_proxy()
         if self.request_type:
@@ -783,6 +835,7 @@ class AsyncCallbackProxy(CallbackProxyBase):
             return result
         else:
             await proxy.send_notification(outgoing_msg)
+            return None
 
 
 class AsyncIterableCallbackProxy(CallbackProxyBase):
@@ -797,7 +850,7 @@ class AsyncIterableCallbackProxy(CallbackProxyBase):
         if self._final:
             raise StopAsyncIteration()
         
-        outgoing_msg = OutgoingRequest(target=self._cb_param_name, callback_request_id=self._callback_request_id)
+        outgoing_msg = Request(target=self._cb_param_name, callback_request_id=self._callback_request_id)
         log.debug(f'CallbackIterableProxy call: {repr(outgoing_msg)}')
         proxy = self._channel.get_proxy()
         result, final = await proxy.send_request_for_iter(outgoing_msg)
@@ -811,7 +864,7 @@ class AsyncIterableCallbackProxy(CallbackProxyBase):
 
 class AsyncInjectorBase(ABC):    
     # FIXME: create base MsgChannel in core so we can assert this is a MsgChannel here.
-    def __init__(self, msg_channel, incoming_request: RequestBase, func_info: FuncInfo):
+    def __init__(self, msg_channel, incoming_request: CallBase, func_info: FuncInfo):
         self.msg_channel = msg_channel
         self.incoming_request = incoming_request
         self.func_info = func_info

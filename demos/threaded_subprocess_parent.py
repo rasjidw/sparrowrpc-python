@@ -10,9 +10,8 @@ import threading
 import time
 
 from sparrowrpc.decorators import make_export_decorator
-from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
 from sparrowrpc.threaded import ThreadedDispatcher
-from sparrowrpc.engines.v050 import ProtocolEngine
+from sparrowrpc.engine import ProtocolEngine
 from sparrowrpc.threaded.transports import ParentSubprocessRunner
 
 
@@ -53,11 +52,7 @@ def log_child_stderr(stderr):
 
 
 def main(debug, use_msgpack):
-    if use_msgpack:
-        serialiser = MsgpackSerialiser()
-    else:
-        serialiser = JsonSerialiser()
-    engine = ProtocolEngine(serialiser)
+    engine = ProtocolEngine()
     dispatcher = ThreadedDispatcher(num_threads=5)
 
     transport = ParentSubprocessRunner(engine, dispatcher)

@@ -15,7 +15,7 @@ from websockets.sync import server
 
 import websockets.exceptions
 
-from ...bases import ProtocolEngineBase
+from ...engine import ProtocolEngine
 from ...lib import SignalHandlerInstaller
 from ...threaded import ThreadedMsgChannel
 from ..transports import ThreadedTransportBase
@@ -25,7 +25,8 @@ log = logging.getLogger(__name__)
 
 
 class ThreadedWebsocketTransport(ThreadedTransportBase):
-    def __init__(self, websocket, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
+    def __init__(self, websocket, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10,
+                 outgoing_msg_queue_size=10, socket_buf_size=8192):
         super().__init__(max_msg_size, max_bc_length, incoming_msg_queue_size, outgoing_msg_queue_size, socket_buf_size)
         self.websocket = websocket
 
@@ -53,20 +54,13 @@ class ThreadedWebsocketConnector:
     def connect(self, ws_uri):
         websocket = client.connect(ws_uri)
         transport = ThreadedWebsocketTransport(websocket)  # FIX_ME: Allow options to be set / passed in??
-        return ThreadedMsgChannel(transport, initiator=self.initiator, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
+        return ThreadedMsgChannel(transport, initiator=self.initiator, engine=self.engine, dispatcher=self.dispatcher,
+                                    func_registers=self.func_registers)
 
 
 class ThreadedWebsocketListener:
-    def __init__(self, engine_choices, dispatcher, func_registers=None):
-        if isinstance(engine_choices, ProtocolEngineBase):
-            self.engine_choices = [engine_choices]
-        else:
-            self.engine_choices = engine_choices
-        self.engine_lookup = {engine.get_engine_signature(): engine for engine in self.engine_choices}
-        if not self.engine_choices:
-            raise ValueError('At least one engine choice must be passed in')
-        if len(self.engine_choices) != len(self.engine_lookup):
-            raise ValueError('Duplicate engine signatures')
+    def __init__(self, engine: ProtocolEngine, dispatcher, func_registers=None):
+        self.engine = engine
         self.dispatcher = dispatcher
         self.func_registers = func_registers
         self.initiator = False
@@ -124,13 +118,10 @@ class ThreadedWebsocketListener:
         websocket_path = client_websocket.request.path
         requested_engine_sig = websocket_path.strip('/')
         remote_address = 'FIXME'
-        engine = self.engine_lookup.get(requested_engine_sig)
-        if engine:
-            log.info(f'Accepted connection request from {remote_address} with path {websocket_path}')
-            transport = ThreadedWebsocketTransport(client_websocket)
-            channel = ThreadedMsgChannel(transport, initiator=False, engine=engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
-            self.connected_channels[remote_address] = channel
-            channel.start_channel()
-            channel.wait_for_remote_close()
-        else:
-            log.info(f'REJECTED connection request from {remote_address} with path {websocket_path}')
+        log.info(f'Accepted connection request from {remote_address} with path {websocket_path}')
+        transport = ThreadedWebsocketTransport(client_websocket)
+        channel = ThreadedMsgChannel(transport, initiator=False, engine=self.engine, dispatcher=self.dispatcher,
+                                       func_registers=self.func_registers)
+        self.connected_channels[remote_address] = channel
+        channel.start_channel()
+        channel.wait_for_remote_close()

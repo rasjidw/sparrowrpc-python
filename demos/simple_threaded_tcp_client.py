@@ -7,9 +7,8 @@ import threading
 import time
 
 from sparrowrpc.decorators import make_export_decorator
-from sparrowrpc.messages import IncomingException, IncomingResponse
-from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
-from sparrowrpc.engines import hs, v050
+from sparrowrpc.messages import ExceptionResponse, Response
+from sparrowrpc.engine import ProtocolEngine
 
 from sparrowrpc.threaded import ThreadedDispatcher
 from sparrowrpc.threaded.transports import ThreadedTcpConnector
@@ -43,10 +42,10 @@ class ResultWaiter:
 
     def process_msg(self, msg):
         show_data(msg)
-        if isinstance(msg, IncomingResponse):
+        if isinstance(msg, Response):
             self.result = msg.result
             self.got_result.set()
-        elif isinstance(msg, IncomingException):
+        elif isinstance(msg, ExceptionResponse):
             self.exception = msg.exc_info
             self.got_result.set()
         else:
@@ -55,7 +54,7 @@ class ResultWaiter:
     def get_result(self):
         self.got_result.wait()
         if self.exception:
-            raise RuntimeError('Something bad happended')
+            raise RuntimeError('Something bad happened')
         else:
             return self.result
 
@@ -69,21 +68,12 @@ def background_counter(channel, count_to, delay):
     print(f'*** Background counter result: {result}')
 
 
-def main(engine_choice, use_websocket):
-    if engine_choice == 'hs':
-        engine = hs.ProtocolEngine()
-    else:
-        if engine_choice == 'mp':
-            serialiser = MsgpackSerialiser()
-        else:
-            serialiser = JsonSerialiser()
-        engine = v050.ProtocolEngine(serialiser)
-        
+def main(serialiser_choice, use_websocket):
+    engine = ProtocolEngine()
     dispatcher = ThreadedDispatcher(num_threads=5)
     if use_websocket:
         connector = ThreadedWebsocketConnector(engine, dispatcher)
-        engine_sig = engine.get_engine_signature()
-        uri = f'ws://127.0.0.1:9001/{engine_sig}'
+        uri = f'ws://127.0.0.1:9001/'
         channel = connector.connect(uri)
     else:
         connector = ThreadedTcpConnector(engine, dispatcher)
@@ -112,16 +102,13 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action='store_true')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--msgpack', action='store_true')
-    group.add_argument('--hs', action='store_true')
     parser.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
     root_logger = logging.getLogger()
     if args.debug:
         root_logger.setLevel(logging.DEBUG)
-    choice = 'js'
+    choice = 'j'
     if args.msgpack:
-        choice = 'mp'
-    if args.hs:
-        choice = 'hs'
+        choice = 'm'
     main(choice, args.websocket)

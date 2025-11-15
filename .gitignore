@@ -7,3 +7,4 @@ zz*
 *.stdout.txt
 .coverage*
 .tox
+.idea

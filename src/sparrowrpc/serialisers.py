@@ -9,15 +9,13 @@ try:
         import umsgpack as msgpack  # micropython  # type: ignore
     else:
         import msgpack
-    have_msgpack = True
 except ImportError:
-        have_msgpack = False
+        msgpack = None
 
 try:
     import cbor2
-    have_cbor2 = True
 except ImportError:
-    have_cbor2 = False
+    cbor2 = None
 
 
 class BaseSerialiser(ABC):
@@ -31,27 +29,31 @@ class BaseSerialiser(ABC):
 
 
 class JsonSerialiser(BaseSerialiser):
-    sig = 'JS'
+    sig = 'j'
     def serialise(self, obj_data: Any) -> bytes:
         return json.dumps(obj_data).encode()
     def deserialise(self, bin_data: bytes) -> Any:
         return json.loads(bin_data.decode())
 
 
-if have_msgpack:
+if msgpack:
     class MsgpackSerialiser(BaseSerialiser):
-        sig = 'MP'
+        sig = 'm'
         # using dumps and loads for micropython compatibility
         def serialise(self, obj_data: Any) -> bytes:
             return msgpack.dumps(obj_data) # type: ignore
         def deserialise(self, bin_data: bytes) -> Any:
             return msgpack.loads(bin_data)
+else:
+    MsgpackSerialiser = None
 
 
-if have_cbor2:
+if cbor2:
     class CborSerialiser(BaseSerialiser):
-        sig = 'CBOR'
+        sig = 'c'
         def serialise(self, obj_data: Any) -> bytes:
             return cbor2.dumps(obj_data)
         def deserialise(self, bin_data: bytes) -> Any:
             return cbor2.loads(bin_data)
+else:
+    CborSerialiser = None

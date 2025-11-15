@@ -10,7 +10,7 @@ except (AttributeError, ImportError):  #= async <
     from uasync.queues import Queue, QueueEmpty # type: ignore  #= async <
 
 
-from .bases import ProtocolEngineBase
+from .encoders import ProtocolEngineBase
 from .asyncio import AsyncMsgChannel
 from .asyncio.transports import AsyncTransportBase
 

@@ -3,16 +3,12 @@
 import argparse
 import logging
 import sys
-from time import sleep
-from threading import current_thread
 
 from sparrowrpc.decorators import make_export_decorator
-from sparrowrpc.threaded import ThreadedMsgChannelInjector, ThreadedCallbackProxy
-from sparrowrpc.engines import hs, v050
-from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
 from sparrowrpc.exceptions import InvalidParams
+from sparrowrpc.engine import ProtocolEngine
 
-from sparrowrpc.threaded import ThreadedDispatcher, ThreadedMsgChannel
+from sparrowrpc.threaded import ThreadedDispatcher
 from sparrowrpc.threaded.transports import ThreadedTcpListener
 from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketListener
 
@@ -53,19 +49,16 @@ def main():
     parser.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
-    json_engine = v050.ProtocolEngine(JsonSerialiser())
-    msgpack_engine = v050.ProtocolEngine(MsgpackSerialiser())
-    jsonrpc2l_engine = hs.ProtocolEngine()
-    engine_choicies = [msgpack_engine, json_engine, jsonrpc2l_engine]
-    
+    engine = ProtocolEngine()
+
     dispatcher = ThreadedDispatcher(num_threads=5)
     if args.websocket:
         print('Running websocket server on 9001')
-        websocket_server = ThreadedWebsocketListener(engine_choicies, dispatcher)
+        websocket_server = ThreadedWebsocketListener(engine, dispatcher)
         websocket_server.run_server('0.0.0.0', 9001)
     else:
         print('Running tcp server on 5000')
-        tcp_server = ThreadedTcpListener(engine_choicies, dispatcher)
+        tcp_server = ThreadedTcpListener(engine, dispatcher)
         tcp_server.run_server('0.0.0.0', 5000)
     dispatcher.shutdown()
 

@@ -6,18 +6,7 @@ import logging
 import sys
 
 from sparrowrpc import export, InvalidParams
-from sparrowrpc.engines.v050 import ProtocolEngine
-from sparrowrpc.serialisers import MsgpackSerialiser
-from sparrowrpc.serialisers import JsonSerialiser
-try:
-    from sparrowrpc.serialisers import MsgpackSerialiser
-except ImportError:
-     MsgpackSerialiser = None
-try:
-    from sparrowrpc.serialisers import CborSerialiser
-except ImportError:
-    CborSerialiser = None
-
+from sparrowrpc.engine import ProtocolEngine
 from sparrowrpc.asyncio import AsyncDispatcher, AsyncMsgChannel, AsyncMsgChannelInjector, AsyncCallbackProxy
 from sparrowrpc.asyncio.transports import AsyncTcpListener, AsyncUnixSocketListener
 try:
@@ -126,31 +115,21 @@ async def main():
         group.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
-    json_engine = ProtocolEngine(JsonSerialiser())
-    engine_choicies = [json_engine]
-    if MsgpackSerialiser:
-        msgpack_engine = ProtocolEngine(MsgpackSerialiser())
-        engine_choicies.append(msgpack_engine)
-    if CborSerialiser:
-        cbor_engine = ProtocolEngine(CborSerialiser())
-        engine_choicies.append(cbor_engine)
-
-    print(f'Engine Serialisation options are: {[e.get_engine_signature() for e in engine_choicies]}')
-    
+    engine = ProtocolEngine()
     dispatcher = AsyncDispatcher(num_threads=5)
     if getattr(args, 'websocket', False):
         print('Running websocket server on 9001')
-        websocket_server = AsyncWebsocketListener(engine_choicies, dispatcher)
+        websocket_server = AsyncWebsocketListener(engine, dispatcher)
         await websocket_server.run_server('0.0.0.0', 9001)
     else:
         if args.unix_socket:
             path = '/tmp/sparrowrpc.sock'
             print(f'Listening on unix socket {path}')
-            socket_server = AsyncUnixSocketListener(engine_choicies, dispatcher)
+            socket_server = AsyncUnixSocketListener(engine, dispatcher)
             await socket_server.run_server(path)
         else:
             print('Running tcp server on 5000')
-            tcp_server = AsyncTcpListener(engine_choicies, dispatcher)
+            tcp_server = AsyncTcpListener(engine, dispatcher)
             await tcp_server.run_server('0.0.0.0', 5000)
     await dispatcher.shutdown()
 

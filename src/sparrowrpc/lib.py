@@ -3,7 +3,7 @@ from __future__ import annotations
 import signal
 import socket
 import sys
-from typing import Optional, Iterable
+from typing import Optional, Iterable, Callable
 
 
 class SignalHandlerInstaller:
@@ -16,7 +16,7 @@ class SignalHandlerInstaller:
         self.signals = signals
         self.saved_handlers = dict()  # signal -> handler
 
-    def install(self, handler: callable):
+    def install(self, handler: Callable):
         for sig in self.signals:
             self.saved_handlers[sig] = signal.getsignal(sig)
             signal.signal(sig, handler)

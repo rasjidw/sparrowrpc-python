@@ -6,17 +6,9 @@ import logging
 import sys
 
 from sparrowrpc import export
-from sparrowrpc.messages import IncomingException, IncomingResponse
-from sparrowrpc.serialisers import JsonSerialiser
-try:
-    from sparrowrpc.serialisers import MsgpackSerialiser
-except ImportError:
-     MsgpackSerialiser = None
-try:
-    from sparrowrpc.serialisers import CborSerialiser
-except ImportError:
-    CborSerialiser = None
-from sparrowrpc.engines.v050 import ProtocolEngine
+from sparrowrpc.messages import ExceptionResponse, Response
+from sparrowrpc.engine import ProtocolEngine
+import sparrowrpc.serialisers
 
 from sparrowrpc.asyncio import AsyncDispatcher
 from sparrowrpc.asyncio.transports import AsyncTcpConnector, AsyncUnixSocketConnector
@@ -70,10 +62,10 @@ class ResultWaiter:
 
     async def process_msg(self, msg):
         show_data(msg)
-        if isinstance(msg, IncomingResponse):
+        if isinstance(msg, Response):
             self.result = msg.result
             await self.got_result.set()
-        elif isinstance(msg, IncomingException):
+        elif isinstance(msg, ExceptionResponse):
             self.exception = msg.exc_info
             await self.got_result.set()
         else:
@@ -82,7 +74,7 @@ class ResultWaiter:
     async def get_result(self):
         await self.got_result.wait()
         if self.exception:
-            raise RuntimeError('Something bad happended')
+            raise RuntimeError('Something bad happened')
         else:
             return self.result
 
@@ -116,19 +108,16 @@ class AsyncData:
 
 async def main(args):
     if args.msgpack:
-        serialiser = MsgpackSerialiser()
+        default_serialiser_sig = 'm'
     elif args.cbor:
-        serialiser = CborSerialiser()
+        default_serialiser_sig = 'c'
     else:
-        serialiser = JsonSerialiser()
-    engine = ProtocolEngine(serialiser)
-    print(f'Engine signature is: {engine.get_engine_signature()}')
-
+        default_serialiser_sig = 'j'
+    engine = ProtocolEngine()
     dispatcher = AsyncDispatcher(num_threads=5)
     if getattr(args, 'websocket', None):
         connector = AsyncWebsocketConnector(engine, dispatcher)
-        engine_sig = engine.get_engine_signature()
-        uri = f'ws://127.0.0.1:9001/{engine_sig}'
+        uri = f'ws://127.0.0.1:9001/'
         channel = await connector.connect(uri)
     else:
         if getattr(args, 'unix_socket', None):
@@ -221,9 +210,9 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action='store_true')
 
     group = parser.add_mutually_exclusive_group() if not micropython else parser
-    if MsgpackSerialiser:
+    if sparrowrpc.serialisers.MsgpackSerialiser:
         group.add_argument('--msgpack', action='store_true')
-    if CborSerialiser:
+    if sparrowrpc.serialisers.CborSerialiser:
         group.add_argument('--cbor', action='store_true')
 
     if not micropython:

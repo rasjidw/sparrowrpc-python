@@ -7,9 +7,8 @@ from time import sleep
 from threading import current_thread
 
 from sparrowrpc.decorators import make_export_decorator
-from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
 from sparrowrpc.threaded import ThreadedDispatcher, ThreadedCallbackProxy
-from sparrowrpc.engines.v050 import ProtocolEngine
+from sparrowrpc.engine import ProtocolEngine
 from sparrowrpc.threaded.transports import ChildSubprocessRunner
 
 
@@ -47,10 +46,7 @@ def main(use_msgpack):
     sys.stderr.write('*** CHILD STARTING ***\n')
     sys.stderr.flush()
 
-    json_engine = ProtocolEngine(JsonSerialiser())
-    msgpack_engine = ProtocolEngine(MsgpackSerialiser())
-    engine = msgpack_engine if use_msgpack else json_engine
-    
+    engine = ProtocolEngine()
     dispatcher = ThreadedDispatcher(num_threads=5)
     server = ChildSubprocessRunner(engine, dispatcher)
     channel = server.get_channel()

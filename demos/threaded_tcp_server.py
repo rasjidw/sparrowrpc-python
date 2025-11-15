@@ -7,16 +7,7 @@ from time import sleep
 from threading import current_thread
 
 from sparrowrpc import export, InvalidParams
-from sparrowrpc.engines.v050 import ProtocolEngine
-from sparrowrpc.serialisers import JsonSerialiser
-try:
-    from sparrowrpc.serialisers import MsgpackSerialiser
-except ImportError:
-     MsgpackSerialiser = None
-try:
-    from sparrowrpc.serialisers import CborSerialiser
-except ImportError:
-    CborSerialiser = None
+from sparrowrpc.engine import ProtocolEngine
 
 from sparrowrpc.threaded import ThreadedDispatcher, ThreadedMsgChannel, ThreadedMsgChannelInjector, ThreadedCallbackProxy
 from sparrowrpc.threaded.transports import ThreadedTcpListener, ThreadedUnixSocketListener
@@ -89,31 +80,21 @@ def main():
         group.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
-    json_engine = ProtocolEngine(JsonSerialiser())
-    engine_choicies = [json_engine]
-    if MsgpackSerialiser:
-        msgpack_engine = ProtocolEngine(MsgpackSerialiser())
-        engine_choicies.append(msgpack_engine)
-    if CborSerialiser:
-        cbor_engine = ProtocolEngine(CborSerialiser())
-        engine_choicies.append(cbor_engine)
-
-    print(f'Engine Serialisation options are: {[e.get_engine_signature() for e in engine_choicies]}')
-
+    protocol_engine = ProtocolEngine()
     dispatcher = ThreadedDispatcher(num_threads=5)    
     if getattr(args, 'websocket', False):
         print('Running websocket server on 9001')
-        websocket_server = ThreadedWebsocketListener(engine_choicies, dispatcher)
+        websocket_server = ThreadedWebsocketListener(protocol_engine, dispatcher)
         websocket_server.run_server('0.0.0.0', 9001)
     else:
         if args.unix_socket:
             path = '/tmp/sparrowrpc.sock'
             print(f'Listening on unix socket {path}')
-            socket_server = ThreadedUnixSocketListener(engine_choicies, dispatcher)
+            socket_server = ThreadedUnixSocketListener(protocol_engine, dispatcher)
             socket_server.run_server(path)
         else:
             print('Running tcp server on 5000')
-            tcp_server = ThreadedTcpListener(engine_choicies, dispatcher)
+            tcp_server = ThreadedTcpListener(protocol_engine, dispatcher)
             tcp_server.run_server('0.0.0.0', 5000)
     dispatcher.shutdown()
 

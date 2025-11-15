@@ -5,11 +5,9 @@ from time import sleep
 from typing import Iterator
 
 from sparrowrpc import export
-from sparrowrpc.engines.v050 import ProtocolEngine
-from sparrowrpc.serialisers import JsonSerialiser, MsgpackSerialiser, CborSerialiser
-
-from sparrowrpc.threaded import ThreadedDispatcher, ThreadedMsgChannel, ThreadedMsgChannelInjector, ThreadedCallbackProxy
-from sparrowrpc.threaded.transports import ThreadedTcpListener, ThreadedUnixSocketListener
+from sparrowrpc.engine import ProtocolEngine
+from sparrowrpc.threaded import ThreadedDispatcher, ThreadedCallbackProxy
+from sparrowrpc.threaded.transports import ThreadedTcpListener
 
 
 @export
@@ -44,14 +42,10 @@ def demo_multipart_param(data: Iterator[int]):
 
 
 def main():
-    json_engine = ProtocolEngine(JsonSerialiser())
-    msgpack_engine = ProtocolEngine(MsgpackSerialiser())
-    cbor_engine = ProtocolEngine(CborSerialiser())
-    engine_choicies = [json_engine, msgpack_engine, cbor_engine]
-
-    dispatcher = ThreadedDispatcher(num_threads=5)    
+    engine = ProtocolEngine()
+    dispatcher = ThreadedDispatcher(num_threads=5)
     print('Running tcp server on 5000')
-    tcp_server = ThreadedTcpListener(engine_choicies, dispatcher)
+    tcp_server = ThreadedTcpListener(engine, dispatcher)
     tcp_server.run_server('0.0.0.0', 5000)
     dispatcher.shutdown()
 

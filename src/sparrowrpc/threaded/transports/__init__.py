@@ -33,11 +33,11 @@ if not running_micropython:
 from binarychain import BinaryChain, ChainReader
 
 
-from ...bases import ProtocolEngineBase
-from ...engines import hs
+from ...engine import ProtocolEngine
+from ...encoders import hs
 if not running_micropython:
     from ...lib import SignalHandlerInstaller, detect_unix_socket_in_use
-from ...messages import IncomingRequest, IncomingResponse, OutgoingRequest, OutgoingResponse, TransportClosedEvent, TransportBrokenEvent
+from ...messages import Request, Response, TransportClosedEvent, TransportBrokenEvent
 
 from ...threaded import ThreadedMsgChannel, ThreadedTransportBase
 
@@ -45,143 +45,6 @@ from ...threaded import ThreadedMsgChannel, ThreadedTransportBase
 log = logging.getLogger(__name__)
 
 
-
-class ThreadedHandshake:
-    BC_PREFIX = 'HS'
-    SET_ENGINE = 'SET_ENGINE'
-    REQUEST_CHOICES = 'REQUEST_CHOICES'
-
-    def __init__(self, transport: ThreadedTransportBase, initiator: bool, engine_choices: list[ProtocolEngineBase]):
-        self.transport = transport
-        self.hs_engine = hs.ProtocolEngine(self.BC_PREFIX)
-        self.initiator = initiator
-        self.engine_choices = engine_choices
-        self.engine_lookup = {engine.get_engine_signature(): engine for engine in self.engine_choices}
-        if not self.engine_choices:
-            raise ValueError('At least one engine choice must be passed in')
-        if len(self.engine_choices) != len(self.engine_lookup):
-            raise ValueError('Duplicate engine signatures')
-        self.engine_selected = None
-        self.handshake_complete = False
-        self.out_req_id = 1
-        self.out_resp_id = 1
-        self.cmd_map = {self.SET_ENGINE: self.acceptor_set_engine,
-                        self.REQUEST_CHOICES: self.list_engine_choices,
-                        }
-
-    def start_handshake(self):
-        # returns a protocol engine
-        if self.initiator:
-            self._initator_handshake()
-        else:
-            self._acceptor_handshake()
-        log.debug(f'Handshake complete with engine {self.engine_selected}')
-        return self.engine_selected
-
-    def _initator_handshake(self):
-        if len(self.engine_choices) == 1:
-            engine = self.engine_choices[0]
-        else:
-            offered_sigs = set(self.request_engine_choices())
-            for engine in self.engine_choices:
-                if engine._sig in offered_sigs:
-                    break
-            else:
-                raise RuntimeError('No compatible engine found')  # FIXME: better exception type
-        self.initator_set_engine(engine)
-            
-    def request_engine_choices(self):
-        return self._sync_send_and_receive(self.REQUEST_CHOICES)
-    
-    def _sync_send_and_receive(self, target, **params):
-        out_req = OutgoingRequest(target=target, params=params)
-        message_id =  self.out_req_id
-        self.out_req_id += 1
-
-        bc = self.hs_engine.outgoing_message_to_binary_chain(out_req, message_id)
-        bc.prefix = self.BC_PREFIX
-        self.transport.send_binary_chain(bc)
-        raw_response, complete, remote_closed = self.transport.incoming_queue.get()  # should be a binary chain
-        assert isinstance(raw_response, BinaryChain)
-        response = self.hs_engine.parse_incoming_message(raw_response)
-        assert isinstance(response, IncomingResponse)
-        assert response.request_id == message_id
-        return response.result
-    
-    def initator_set_engine(self, engine):
-        # send engine choice to acceptor. Wait for response.
-        assert isinstance(engine, ProtocolEngineBase)
-        response = self._sync_send_and_receive(self.SET_ENGINE, choice=engine.get_engine_signature())
-        log.debug(f'Got set engine response: {response!r}')
-        
-        if 'accepted' in response:
-            # all good
-            self.engine_selected = engine
-            self.handshake_complete = True
-            return
-        
-        if 'rejected' in response:
-            msg = 'Engine {engine.sig} rejected'
-            log.error(msg)
-            log.info(f"Offered engine signatures: {response['rejected']}")
-            raise RuntimeError(msg)
-        raise RuntimeError('Invalid response')
-
-    def _acceptor_handshake(self):
-        cmd_map = {self.SET_ENGINE: self.acceptor_set_engine,
-                   self.REQUEST_CHOICES: self.list_engine_choices,
-                   }
-        while not self.handshake_complete:
-            in_req = self._get_handshake_msg()
-            assert isinstance(in_req, IncomingRequest)
-            cmd_func = cmd_map.get(in_req.target)
-            if cmd_func:
-                try:
-                    result = cmd_func(**in_req.params)
-                    self._send_response(in_req, result)
-                except Exception as e:
-                    msg = f'Handshake dispatch error: {str(e)}'
-                    log.error(msg)
-                    raise RuntimeError(msg)
-            else:
-                raise RuntimeError(f'Invalid handshake command: {in_req.target}')
-            
-    def _send_response(self, in_req: IncomingRequest, result):
-        id = self.out_resp_id
-        self.out_resp_id += 1
-        out_response = OutgoingResponse(result=result, request_id=in_req.id)
-        out_bc = self.hs_engine.outgoing_message_to_binary_chain(out_response, message_id=id)
-        out_bc.prefix = self.BC_PREFIX
-        self.transport.send_binary_chain(out_bc)
-
-    def acceptor_set_engine(self, choice):
-        if choice in self.engine_lookup.keys():
-            self.handshake_complete = True
-            self.engine_selected = self.engine_lookup[choice]
-            return dict(accepted=True)
-        else:
-            return dict(rejected=self._get_sigs())
-
-    def list_engine_choices(self):
-        return self._get_sigs()
-    
-    def _get_handshake_msg(self):
-        raw_bc, complete, remote_closed = self.transport.incoming_queue.get()
-        if raw_bc is None:
-            raise RuntimeError('Connetion closed')  # FIXME - gracefully handle connectcion closures
-        if raw_bc:
-            assert isinstance(raw_bc, BinaryChain)
-        if raw_bc.prefix == self.BC_PREFIX:
-            incoming_msg = self.hs_engine.parse_incoming_message(raw_bc)
-            if isinstance(incoming_msg, IncomingRequest):
-                return incoming_msg
-            else:
-                raise RuntimeError('Invalid incoming handshake message')
-        else:
-            raise RuntimeError('Invalid prefix')
-        
-    def _get_sigs(self):
-        return [engine.get_engine_signature() for engine in self.engine_choices]
 
 class ThreadedTcpTransport(ThreadedTransportBase):
     def __init__(self, conn_socket: socket.socket, max_msg_size=10*1024*1024, max_bc_length=10, incoming_msg_queue_size=10, outgoing_msg_queue_size=10, socket_buf_size=8192):
@@ -215,14 +78,10 @@ class ThreadedTcpTransport(ThreadedTransportBase):
 
     
 class ThreadedTcpConnector:
-    def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
-        if isinstance(engine_choices, ProtocolEngineBase):
-            self.engine_choices = [engine_choices]
-        else:
-            self.engine_choices = engine_choices
+    def __init__(self, engine: ProtocolEngine, dispatcher, func_registers=None):
+        self.engine = engine
         self.dispatcher = dispatcher
         self.func_registers = func_registers
-        self.handshake_cls = handshake_cls if handshake_cls else ThreadedHandshake
         self.initiator = True
         self.unix_socket_path = None
         
@@ -238,31 +97,22 @@ class ThreadedTcpConnector:
             conn_socket.connect(remote_address)
         transport = ThreadedTcpTransport(conn_socket)
         transport.start()
-        handshake = self.handshake_cls(transport, self.initiator, self.engine_choices)
-        handshake.start_handshake()
-        if handshake.engine_selected:
-            return ThreadedMsgChannel(transport, initiator=self.initiator, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
-        else:
-            raise RuntimeError('No engine set')
+        return ThreadedMsgChannel(transport, initiator=self.initiator, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
 class ThreadedUnixSocketConnector(ThreadedTcpConnector):
     def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
-        super().__init__(engine_choices, dispatcher, func_registers, handshake_cls)
+        super().__init__(engine_choices, dispatcher, func_registers)
 
     def connect(self, path):
         return super().connect(path, None)
 
 
 class ThreadedTcpListener:
-    def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
-        if isinstance(engine_choices, ProtocolEngineBase):
-            self.engine_choices = [engine_choices]
-        else:
-            self.engine_choices = engine_choices
+    def __init__(self, engine: ProtocolEngine, dispatcher, func_registers=None):
+        self.engine = engine
         self.dispatcher = dispatcher
         self.func_registers = func_registers
-        self.handshake_cls = handshake_cls if handshake_cls else ThreadedHandshake
         self.initiator = False
         self.tcp_server = None
         self.address = None
@@ -348,12 +198,9 @@ class ThreadedTcpListener:
 
     def _start_channel(self, transport: ThreadedTcpTransport, remote_address):
         transport.start()
-        handshake = self.handshake_cls(transport, self.initiator, self.engine_choices)
-        handshake.start_handshake()
-        if handshake.engine_selected:
-            channel = ThreadedMsgChannel(transport, initiator=False, engine=handshake.engine_selected, dispatcher=self.dispatcher, func_registers=self.func_registers)
-            self.connected_channels[remote_address] = channel
-            channel.start_channel()
+        channel = ThreadedMsgChannel(transport, initiator=False, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
+        self.connected_channels[remote_address] = channel
+        channel.start_channel()
 
     def _signal_handler(self, signum, frame):
         signame = signal.Signals(signum).name
@@ -361,6 +208,7 @@ class ThreadedTcpListener:
         self.time_to_stop.set()
 
     def block(self, signals=None):
+        signal_handler_installer = None
         if not running_micropython:
             signal_handler_installer = SignalHandlerInstaller(signals)
             signal_handler_installer.install(self._signal_handler)
@@ -371,14 +219,14 @@ class ThreadedTcpListener:
                     break
             self.listening_thread.join()
         finally:
-            if not running_micropython:
+            if signal_handler_installer:
                 signal_handler_installer.remove()
         self.shutdown_server()
 
 
 class ThreadedUnixSocketListener(ThreadedTcpListener):
-    def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
-        super().__init__(engine_choices, dispatcher, func_registers, handshake_cls)
+    def __init__(self, engine_choices, dispatcher, func_registers=None):
+        super().__init__(engine_choices, dispatcher, func_registers)
 
     def run_server(self, path, replace_if_in_use=False, block=True):
         self.replace_unix_socket_if_in_use = replace_if_in_use
@@ -410,7 +258,7 @@ class StreamTransport(ThreadedTransportBase):
 
 class SubprocessRunnerBase(ABC):
     def __init__(self, engine, dispatcher, func_registers=None):
-        assert isinstance(engine, ProtocolEngineBase)
+        assert isinstance(engine, ProtocolEngine)
         self.engine = engine
         self.dispatcher = dispatcher
         self.func_registers = func_registers

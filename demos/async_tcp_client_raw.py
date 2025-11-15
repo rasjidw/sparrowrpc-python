@@ -4,15 +4,11 @@ import argparse
 import asyncio
 import logging
 import sys
-import time
 
 
 from sparrowrpc.decorators import make_export_decorator
-from sparrowrpc.exceptions import CalleeException, CallerException
-from sparrowrpc.messages import FinalType, IncomingException, IncomingResponse, OutgoingRequest, RequestCallbackInfo
-from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser
-from sparrowrpc.messages import IterableCallbackInfo
-from sparrowrpc.engines.v050 import ProtocolEngine
+from sparrowrpc.messages import ExceptionResponse, Response, Request, RequestCallbackInfo
+from sparrowrpc.engine import ProtocolEngine
 
 from sparrowrpc.asyncio import AsyncDispatcher
 from sparrowrpc.asyncio.transports import AsyncTcpConnector
@@ -64,11 +60,11 @@ class ResultWaiter:
         self.exception = None
 
     async def process_msg(self, msg):
-        show_data(msg)
-        if isinstance(msg, IncomingResponse):
+        await show_data(msg)
+        if isinstance(msg, Response):
             self.result = msg.result
             self.got_result.set()
-        elif isinstance(msg, IncomingException):
+        elif isinstance(msg, ExceptionResponse):
             self.exception = msg.exc_info
             self.got_result.set()
         else:
@@ -77,7 +73,7 @@ class ResultWaiter:
     async def get_result(self):
         await self.got_result.wait()
         if self.exception:
-            raise RuntimeError('Something bad happended')
+            raise RuntimeError('Something bad happened')
         else:
             return self.result
 
@@ -86,22 +82,21 @@ async def background_counter(channel, count_to, delay):
     cb = lambda message: print(f'*** Got msg: {message}. Displaying in thread {get_thread_or_task_name()}')
     proxy = await channel.get_proxy()
     print(f'*** Calling slow counter in background thread {get_thread_or_task_name()}')
-    req = OutgoingRequest('slow_counter', params=dict(count_to=count_to, delay=delay), callback_params={'progress': RequestCallbackInfo(cb)})
+    req = Request('slow_counter', params=dict(count_to=count_to, delay=delay), callback_params={'progress': RequestCallbackInfo(cb)})
     result = await proxy.send_request(req)
     print(f'*** Background counter result: {result}')
 
 
 async def test_calls(use_msgpack, use_websocket):
     if use_msgpack:
-        serialiser = MsgpackSerialiser()
+        default_serialiser_sig = 'm'
     else:
-        serialiser = JsonSerialiser()
-    engine = ProtocolEngine(serialiser)
+        default_serialiser_sig = 'j'
+    engine = ProtocolEngine()
     dispatcher = AsyncDispatcher(num_threads=5)
     if use_websocket:
         connector = AsyncWebsocketConnector(engine, dispatcher)
-        engine_sig = engine.get_engine_signature()
-        uri = f'ws://127.0.0.1:9001/{engine_sig}'
+        uri = f'ws://127.0.0.1:9001/'
         channel = await connector.connect(uri)
     else:
         connector = AsyncTcpConnector(engine, dispatcher)
@@ -111,63 +106,23 @@ async def test_calls(use_msgpack, use_websocket):
     # start of test calls
     proxy = channel.get_proxy()
 
-    req = OutgoingRequest(target='ping', namespace='#sys')
+    req = Request(target='ping', namespace='#sys')
     result = await proxy.send_request(req)
     print(f'Got result: {result}')
 
-    req = OutgoingRequest(target='hello_world')
+    req = Request(target='hello_world')
     req.acknowledge = True
     result = await proxy.send_request(req, msg_sent_callback=show_data, ack_callback=show_data)
     print(f'Got result: {result}')
 
     name = 'Fred'
-    req = OutgoingRequest(target='hello_world', params={'name': name})
+    req = Request(target='hello_world', params={'name': name})
     result = await proxy.send_request(req)
     print(f'Got result: {result}')
 
-    req = OutgoingRequest(target='slow_counter', params={'count_to': 5}, callback_params={'progress': RequestCallbackInfo(func=show_progress)})
+    req = Request(target='slow_counter', params={'count_to': 5}, callback_params={'progress': RequestCallbackInfo(func=show_progress)})
     result = await proxy.send_request(req)
     print(f'Got result: {result}')
-
-
-    # background_thread = threading.Thread(target=background_counter, args=(channel, 5, 1))
-    # background_thread.start()
-
-    # print('Sleeping 2 on the main thread')
-    # time.sleep(2)
-
-    # print('Calling multipart_response')
-    # req = OutgoingRequest('multipart_response', params={'count_to': 10})
-    # for x in proxy.send_request_multipart_result_as_iterator(req):
-    #     print(x)
-
-    # print('Sleeping 2 on the main thread')
-    # time.sleep(2)
-
-    # print('Iterable param (IterableCallback) - Pull')
-    # iter_data = iter([1, 2, 3, 4])
-    # req = OutgoingRequest('iterable_param', callback_params={'nums': IterableCallbackInfo(iter_data)})
-    # result = proxy.send_request(req)
-    # print(f'Got result: {result}')
-
-    # print('Sleeping 2 on the main thread')
-    # time.sleep(2)
-
-    # print('Waiting for backgroud thread')
-    # background_thread.join()
-
-    # for (a, b) in [(1, 2), (1, 0), (3, 4), (11, 22), (None, 2), ('a', 'b')]:
-    #     try:
-    #         print()
-    #         print(f'Calling division with a = {a}, b = {b}')
-    #         result = proxy.send_request(OutgoingRequest('division', params=dict(a=a, b=b)))
-    #         print(f'Got result: {result}')
-    #     except CallerException as e:
-    #         print(f'Opps - we made a mistake: {str(e)}')
-    #     except CalleeException as e:
-    #         print(f'Opps - something went wrong at the other end. {str(e)}')
-    #     except Exception as e:
-    #         print(f'Some other error - {str(e)}')
 
     await channel.shutdown_channel()
     print('Channel shut down')

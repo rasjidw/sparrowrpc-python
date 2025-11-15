@@ -7,18 +7,9 @@ import threading
 import time
 
 from sparrowrpc import export
-from sparrowrpc.messages import IncomingException, IncomingResponse
-from sparrowrpc.serialisers import JsonSerialiser
-try:
-    from sparrowrpc.serialisers import MsgpackSerialiser
-except ImportError:
-     MsgpackSerialiser = None
-try:
-    from sparrowrpc.serialisers import CborSerialiser
-except ImportError:
-    CborSerialiser = None
-
-from sparrowrpc.engines.v050 import ProtocolEngine
+from sparrowrpc.messages import ExceptionResponse, Response
+from sparrowrpc.engine import ProtocolEngine
+import sparrowrpc.serialisers
 
 from sparrowrpc.threaded import ThreadedDispatcher
 from sparrowrpc.threaded.transports import ThreadedTcpConnector, ThreadedUnixSocketConnector
@@ -59,10 +50,10 @@ class ResultWaiter:
 
     def process_msg(self, msg):
         show_data(msg)
-        if isinstance(msg, IncomingResponse):
+        if isinstance(msg, Response):
             self.result = msg.result
             self.got_result.set()
-        elif isinstance(msg, IncomingException):
+        elif isinstance(msg, ExceptionResponse):
             self.exception = msg.exc_info
             self.got_result.set()
         else:
@@ -71,7 +62,7 @@ class ResultWaiter:
     def get_result(self):
         self.got_result.wait()
         if self.exception:
-            raise RuntimeError('Something bad happended')
+            raise RuntimeError('Something bad happened')
         else:
             return self.result
 
@@ -87,19 +78,16 @@ def background_counter(channel, count_to, delay):
 
 def main(args):
     if args.msgpack:
-        serialiser = MsgpackSerialiser()
+        default_serialiser_sig = 'm'
     elif args.cbor:
-        serialiser = CborSerialiser()
+        default_serialiser_sig = 'c'
     else:
-        serialiser = JsonSerialiser()
-    engine = ProtocolEngine(serialiser)
-    print(f'Engine signature is: {engine.get_engine_signature()}')
-
+        default_serialiser_sig = 'j'
+    engine = ProtocolEngine()
     dispatcher = ThreadedDispatcher(num_threads=5)
     if args.websocket:
         connector = ThreadedWebsocketConnector(engine, dispatcher)
-        engine_sig = engine.get_engine_signature()
-        uri = f'ws://127.0.0.1:9001/{engine_sig}'
+        uri = f'ws://127.0.0.1:9001/'
         channel = connector.connect(uri)
     else:
         if args.unix_socket:
@@ -156,7 +144,7 @@ def main(args):
     print('Sleeping 2 on the main thread')
     time.sleep(2)
 
-    print('Waiting for backgroud thread')
+    print('Waiting for background thread')
     background_thread.join()
 
     # for (a, b) in [(1, 2), (1, 0), (3, 4), (11, 22), (None, 2), ('a', 'b')]:
@@ -183,9 +171,9 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action='store_true')
 
     serialisation_group = parser.add_mutually_exclusive_group()
-    if MsgpackSerialiser:
+    if sparrowrpc.serialisers.MsgpackSerialiser:
         serialisation_group.add_argument('--msgpack', action='store_true')
-    if CborSerialiser:
+    if sparrowrpc.serialisers.CborSerialiser:
         serialisation_group.add_argument('--cbor', action='store_true')
 
     conn_group = parser.add_mutually_exclusive_group()
