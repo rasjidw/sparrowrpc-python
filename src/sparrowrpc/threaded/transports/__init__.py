@@ -32,7 +32,7 @@ if not running_micropython:
 
 from binarychain import BinaryChain, ChainReader
 
-
+from ...bases import DEFAULT_SERIALISER_SIG, DEFAULT_ENCODER_TAG
 from ...engine import ProtocolEngine
 from ...encoders import hs
 if not running_micropython:
@@ -78,9 +78,12 @@ class ThreadedTcpTransport(ThreadedTransportBase):
 
     
 class ThreadedTcpConnector:
-    def __init__(self, engine: ProtocolEngine, dispatcher, func_registers=None):
+    def __init__(self, engine: ProtocolEngine, dispatcher, default_serialiser_sig: str=DEFAULT_SERIALISER_SIG,
+                 default_encoder_tag: str=DEFAULT_ENCODER_TAG, func_registers=None):
         self.engine = engine
         self.dispatcher = dispatcher
+        self.default_serialiser_sig = default_serialiser_sig
+        self.default_encoder_tag = default_encoder_tag
         self.func_registers = func_registers
         self.initiator = True
         self.unix_socket_path = None
@@ -97,12 +100,15 @@ class ThreadedTcpConnector:
             conn_socket.connect(remote_address)
         transport = ThreadedTcpTransport(conn_socket)
         transport.start()
-        return ThreadedMsgChannel(transport, initiator=self.initiator, engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
+        return ThreadedMsgChannel(transport, default_serialiser_sig=self.default_serialiser_sig,
+                                    default_encoder_tag=self.default_encoder_tag, initiator=self.initiator,
+                                    engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
 class ThreadedUnixSocketConnector(ThreadedTcpConnector):
-    def __init__(self, engine_choices, dispatcher, func_registers=None, handshake_cls=None):
-        super().__init__(engine_choices, dispatcher, func_registers)
+    def __init__(self, engine_choices, dispatcher, default_serialiser_sig: str=DEFAULT_SERIALISER_SIG,
+                 default_encoder_tag: str=DEFAULT_ENCODER_TAG, func_registers=None, handshake_cls=None):
+        super().__init__(engine_choices, dispatcher, default_serialiser_sig, default_encoder_tag, func_registers)
 
     def connect(self, path):
         return super().connect(path, None)

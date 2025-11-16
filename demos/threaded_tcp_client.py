@@ -86,16 +86,16 @@ def main(args):
     engine = ProtocolEngine()
     dispatcher = ThreadedDispatcher(num_threads=5)
     if args.websocket:
-        connector = ThreadedWebsocketConnector(engine, dispatcher)
+        connector = ThreadedWebsocketConnector(engine, dispatcher, default_serialiser_sig=default_serialiser_sig)
         uri = f'ws://127.0.0.1:9001/'
         channel = connector.connect(uri)
     else:
         if args.unix_socket:
             path = '/tmp/sparrowrpc.sock'
-            connector = ThreadedUnixSocketConnector(engine, dispatcher)
+            connector = ThreadedUnixSocketConnector(engine, dispatcher, default_serialiser_sig=default_serialiser_sig)
             channel = connector.connect(path)
         else:
-            connector = ThreadedTcpConnector(engine, dispatcher)
+            connector = ThreadedTcpConnector(engine, dispatcher, default_serialiser_sig=default_serialiser_sig)
             channel = connector.connect('127.0.0.1', 5000)
     channel.start_channel()
 

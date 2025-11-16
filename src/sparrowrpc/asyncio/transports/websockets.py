@@ -19,7 +19,7 @@ from ...engine import ProtocolEngine
 from ...lib import SignalHandlerInstaller
 from ...asyncio import AsyncMsgChannel
 from ..transports import AsyncTransportBase
-
+from ...bases import DEFAULT_SERIALISER_SIG, DEFAULT_ENCODER_TAG
 
 log = logging.getLogger(__name__)
 
@@ -45,23 +45,30 @@ class AsyncWebsocketTransport(AsyncTransportBase):
 
     
 class AsyncWebsocketConnector:
-    def __init__(self, engine, dispatcher, func_registers=None, handshake_cls=None):
+    def __init__(self, engine, dispatcher, default_serialiser_sig: str=DEFAULT_SERIALISER_SIG,
+                 default_encoder_tag: str=DEFAULT_ENCODER_TAG, func_registers=None, handshake_cls=None):
         self.engine = engine
         self.dispatcher = dispatcher
+        self.default_serialiser_sig = default_serialiser_sig
+        self.default_encoder_tag = default_encoder_tag
         self.func_registers = func_registers
         self.initiator = True
 
     async def connect(self, ws_uri):
         websocket = await client.connect(ws_uri)
         transport = AsyncWebsocketTransport(websocket)  # FIX_ME: Allow options to be set / passed in??
-        return AsyncMsgChannel(transport, initiator=self.initiator, engine=self.engine, dispatcher=self.dispatcher,
-                                    func_registers=self.func_registers)
+        return AsyncMsgChannel(transport, default_serialiser_sig=self.default_serialiser_sig,
+                                    default_encoder_tag=self.default_encoder_tag, initiator=self.initiator,
+                                    engine=self.engine, dispatcher=self.dispatcher, func_registers=self.func_registers)
 
 
 class AsyncWebsocketListener:
-    def __init__(self, engine: ProtocolEngine, dispatcher, func_registers=None):
+    def __init__(self, engine: ProtocolEngine, dispatcher, default_serialiser_sig: str=DEFAULT_SERIALISER_SIG,
+                 default_encoder_tag: str=DEFAULT_ENCODER_TAG, func_registers=None):
         self.engine = engine
         self.dispatcher = dispatcher
+        self.default_serialiser_sig = default_serialiser_sig
+        self.default_encoder_tag = default_encoder_tag
         self.func_registers = func_registers
         self.initiator = False
         self.websocket_server = None

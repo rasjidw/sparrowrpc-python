@@ -7,6 +7,7 @@ from binarychain import BinaryChain
 from .engine import ProtocolEngine
 from .serialisers import JsonSerialiser
 from .encoders.v050 import V050EncoderDecoder
+from .encoders.hs import BasicEncoderDecoder
 from .messages import Acknowledge, ExceptionResponse, Notification, Request, Response, ExceptionCategory, ExceptionInfo, CallBase, RequestType, ResponseType
 from .registers import FuncInfo, FunctionRegister, default_func_register, global_channel_register
 
@@ -16,6 +17,7 @@ log = logging.getLogger(__name__)
 
 DEFAULT_SERIALISER_SIG = JsonSerialiser.sig
 DEFAULT_ENCODER_TAG = V050EncoderDecoder.TAG
+BASIC_ENCODER_TAG = BasicEncoderDecoder.TAG
 
 
 class MsgChannelBase:
@@ -120,6 +122,11 @@ class MsgChannelBase:
 
         if (isinstance(message, Request) or isinstance(message, Notification)) and not message.callback_request_id:
             dispatch = True
+            # record incoming serialisation and encoder and set as new default for outgoing messages
+            if message.envelope_serialisation_code != self.default_serialiser_sig:
+                self.default_serialiser_sig = message.envelope_serialisation_code
+            if message.protocol_version != self.default_encoder_tag:
+                self.default_encoder_tag = message.protocol_version
         else:
             request_completed = False
             if (isinstance(message, Request) or isinstance(message, Notification)) and message.callback_request_id:
