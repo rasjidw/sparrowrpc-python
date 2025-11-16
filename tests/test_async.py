@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-from collections import namedtuple
 import itertools
 import os
-import sys
-from tempfile import NamedTemporaryFile
 import time
 
 import pytest
@@ -14,33 +11,17 @@ import pytest_asyncio
 from listening_server_runner import ListeningServerRunner
 
 import common_data
+from common_data import Ports, get_ports, on_win32, win32_connect_list, connect_list
 
 from sparrowrpc.engine import ProtocolEngine
 from sparrowrpc.exceptions import CalleeException, CallerException
-
 from sparrowrpc.asyncio import AsyncDispatcher
 
-
-if sys.platform == 'win32':
-    port_names = ['threaded_tcp', 'threaded_ws', 'async_tcp', 'async_ws']
-    on_win32 = True
-else:
-    port_names = ['threaded_tcp', 'threaded_ws', 'threaded_uds', 'async_tcp', 'async_ws', 'async_uds']
-    on_win32 = False
-Ports = namedtuple('Ports', port_names)
 
 
 @pytest.fixture(scope="module")
 def ports(start_port):
-    if sys.platform == 'win32':
-        threaded_socket_path = async_socket_path = None
-        return Ports(start_port, start_port + 1, start_port + 10, start_port + 11)
-    else:
-        with NamedTemporaryFile(suffix='.sock') as ft:
-            threaded_socket_path = ft.name
-            with NamedTemporaryFile(suffix='.sock') as fa:
-                async_socket_path = fa.name
-        return Ports(start_port, start_port + 1, threaded_socket_path, start_port + 10, start_port + 11, async_socket_path)
+    return get_ports(start_port)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -66,7 +47,7 @@ def run_listening_servers(ports: Ports):
     async_listening_server_runner.stop()
 
 
-connect_to_list = port_names.copy()
+connect_to_list = win32_connect_list if on_win32 else connect_list
 serialisers = ['j', 'm', 'c']
 
 channel_params = list(itertools.product(connect_to_list, serialisers))
@@ -127,7 +108,7 @@ async def test_multipart_response(channel):
     iterator = await proxy.multipart_response()
     async for item in iterator:
         items.append(item)
-    assert items == common_data.MULTPART_RESPONSE_ITEMS
+    assert items == common_data.MULTIPART_RESPONSE_ITEMS
 
 
 @pytest.mark.asyncio(loop_scope="module")

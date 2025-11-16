@@ -26,7 +26,7 @@ def hello_world(name=None):
 
 @export(multipart_response=True)
 def multipart_response():
-    for fruit in common_data.MULTPART_RESPONSE_ITEMS:
+    for fruit in common_data.MULTIPART_RESPONSE_ITEMS:
         yield fruit
 
 
