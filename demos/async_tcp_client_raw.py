@@ -95,11 +95,11 @@ async def test_calls(use_msgpack, use_websocket):
     engine = ProtocolEngine()
     dispatcher = AsyncDispatcher(num_threads=5)
     if use_websocket:
-        connector = AsyncWebsocketConnector(engine, dispatcher)
+        connector = AsyncWebsocketConnector(engine, dispatcher, default_serialiser_sig=default_serialiser_sig)
         uri = f'ws://127.0.0.1:9001/'
         channel = await connector.connect(uri)
     else:
-        connector = AsyncTcpConnector(engine, dispatcher)
+        connector = AsyncTcpConnector(engine, dispatcher, default_serialiser_sig=default_serialiser_sig)
         channel = await connector.connect('127.0.0.1', 5000)
     await channel.start_channel()
     

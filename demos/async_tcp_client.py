@@ -116,16 +116,16 @@ async def main(args):
     engine = ProtocolEngine()
     dispatcher = AsyncDispatcher(num_threads=5)
     if getattr(args, 'websocket', None):
-        connector = AsyncWebsocketConnector(engine, dispatcher)
+        connector = AsyncWebsocketConnector(engine, dispatcher, default_serialiser_sig=default_serialiser_sig)
         uri = f'ws://127.0.0.1:9001/'
         channel = await connector.connect(uri)
     else:
         if getattr(args, 'unix_socket', None):
             path = '/tmp/sparrowrpc.sock'
-            connector = AsyncUnixSocketConnector(engine, dispatcher)
+            connector = AsyncUnixSocketConnector(engine, dispatcher, default_serialiser_sig=default_serialiser_sig)
             channel = await connector.connect(path)
         else:
-            connector = AsyncTcpConnector(engine, dispatcher)
+            connector = AsyncTcpConnector(engine, dispatcher, default_serialiser_sig=default_serialiser_sig)
             channel = await connector.connect('127.0.0.1', 5000)
     await channel.start_channel()
 
