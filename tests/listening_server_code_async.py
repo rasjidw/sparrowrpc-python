@@ -4,8 +4,7 @@ import logging
 import sys
 
 from sparrowrpc import export, InvalidParams
-from sparrowrpc.engines.v050 import ProtocolEngine
-from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser, MsgpackSerialiser, CborSerialiser
+from sparrowrpc.engine import ProtocolEngine
 
 from sparrowrpc.asyncio import AsyncDispatcher, AsyncMsgChannel, AsyncMsgChannelInjector, AsyncCallbackProxy
 
@@ -77,28 +76,24 @@ async def main():
     ws_port = args.ws_port
     uds_path = args.uds_path
 
-    json_engine = ProtocolEngine(JsonSerialiser())
-    msgpack_engine = ProtocolEngine(MsgpackSerialiser())
-    cbor_engine = ProtocolEngine(CborSerialiser())
-
-    engine_choicies = [json_engine, msgpack_engine, cbor_engine]
+    engine = ProtocolEngine()
     dispatcher = AsyncDispatcher(num_threads=5)
     servers = list()
 
     if tcp_port:
         from sparrowrpc.asyncio.transports import AsyncTcpListener
-        tcp_server = AsyncTcpListener(engine_choicies, dispatcher)
+        tcp_server = AsyncTcpListener(engine, dispatcher)
         await tcp_server.run_server('127.0.0.1', tcp_port, block=False)
         servers.append(tcp_server)
     if ws_port:
         from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketListener
-        ws_server = AsyncWebsocketListener(engine_choicies, dispatcher)
+        ws_server = AsyncWebsocketListener(engine, dispatcher)
         await ws_server.run_server('127.0.0.1', ws_port, block=False)
         servers.append(ws_server)
     if uds_path:
         from sparrowrpc.asyncio.transports import AsyncUnixSocketListener
         print(f'Listening on unix socket {uds_path}')
-        uds_server = AsyncUnixSocketListener(engine_choicies, dispatcher)
+        uds_server = AsyncUnixSocketListener(engine, dispatcher)
         await uds_server.run_server(uds_path, block=False)
         servers.append(uds_server)
 

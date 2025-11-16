@@ -1,2 +1,2 @@
-MULTPART_RESPONSE_ITEMS = ['apple', 'bannana', 'mango']
+MULTPART_RESPONSE_ITEMS = ['apple', 'banana', 'mango']
 

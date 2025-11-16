@@ -14,10 +14,8 @@ from listening_server_runner import ListeningServerRunner
 
 import common_data
 
-from sparrowrpc.serialisers import JsonSerialiser, MsgpackSerialiser, CborSerialiser
-from sparrowrpc.engines import v050
+from sparrowrpc.engine import ProtocolEngine
 from sparrowrpc.exceptions import CalleeException, CallerException
-
 from sparrowrpc.threaded import ThreadedDispatcher
 
 
@@ -68,29 +66,29 @@ def run_listening_servers(ports: Ports):
 
 
 connect_to_list = port_names.copy()
-serialisers = [JsonSerialiser(), MsgpackSerialiser(), CborSerialiser()]
+serialisers = ['j', 'm', 'c']
 channel_params = list(itertools.product(connect_to_list, serialisers))
 
 
 @pytest.fixture(scope="module", params=channel_params)
 def channel(request, ports: Ports):
-    connect_to, serialiser = request.param
+    connect_to, serialiser_sig = request.param
     assert isinstance(connect_to, str)
-    engine = v050.ProtocolEngine(serialiser)
+    engine = ProtocolEngine()
     dispatcher = ThreadedDispatcher(num_threads=5)
     if connect_to.endswith('tcp'):
         from sparrowrpc.threaded.transports import ThreadedTcpConnector
-        tcp_connector = ThreadedTcpConnector(engine, dispatcher)
+        tcp_connector = ThreadedTcpConnector(engine, dispatcher, default_serialiser_sig=serialiser_sig)
         port = ports._asdict()[connect_to]
         channel = tcp_connector.connect('127.0.0.1', port)
     elif connect_to.endswith('ws'):
         from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketConnector
-        ws_connector = ThreadedWebsocketConnector(engine, dispatcher)
+        ws_connector = ThreadedWebsocketConnector(engine, dispatcher, default_serialiser_sig=serialiser_sig)
         port = ports._asdict()[connect_to]
-        channel = ws_connector.connect(f'ws://127.0.0.1:{port}/{engine.get_engine_signature()}')
+        channel = ws_connector.connect(f'ws://127.0.0.1:{port}/')
     elif connect_to.endswith('uds'):
         from sparrowrpc.threaded.transports import ThreadedUnixSocketConnector
-        uds_connector = ThreadedUnixSocketConnector(engine, dispatcher)
+        uds_connector = ThreadedUnixSocketConnector(engine, dispatcher, default_serialiser_sig=serialiser_sig)
         socket_path = ports._asdict()[connect_to]
         channel = uds_connector.connect(socket_path)
     else:

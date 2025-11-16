@@ -4,9 +4,7 @@ import sys
 import threading
 
 from sparrowrpc import export, InvalidParams
-from sparrowrpc.engines.v050 import ProtocolEngine
-from sparrowrpc.serialisers import MsgpackSerialiser, JsonSerialiser, MsgpackSerialiser, CborSerialiser
-
+from sparrowrpc.engine import ProtocolEngine
 from sparrowrpc.threaded import ThreadedDispatcher, ThreadedMsgChannel, ThreadedMsgChannelInjector, ThreadedCallbackProxy
 
 import common_data
@@ -77,28 +75,24 @@ def main():
     ws_port = args.ws_port
     uds_path = args.uds_path
 
-    json_engine = ProtocolEngine(JsonSerialiser())
-    msgpack_engine = ProtocolEngine(MsgpackSerialiser())
-    cbor_engine = ProtocolEngine(CborSerialiser())
-
-    engine_choicies = [json_engine, msgpack_engine, cbor_engine]
+    engine = ProtocolEngine()
     dispatcher = ThreadedDispatcher(num_threads=5)
     servers = list()
 
     if tcp_port:
         from sparrowrpc.threaded.transports import ThreadedTcpListener
-        tcp_server = ThreadedTcpListener(engine_choicies, dispatcher)
+        tcp_server = ThreadedTcpListener(engine, dispatcher)
         tcp_server.run_server('127.0.0.1', tcp_port, block=False)
         servers.append(tcp_server)
     if ws_port:
         from sparrowrpc.threaded.transports.websockets import ThreadedWebsocketListener
-        ws_server = ThreadedWebsocketListener(engine_choicies, dispatcher)
+        ws_server = ThreadedWebsocketListener(engine, dispatcher)
         ws_server.run_server('127.0.0.1', ws_port, block=False)
         servers.append(ws_server)
     if uds_path:
         from sparrowrpc.threaded.transports import ThreadedUnixSocketListener
         print(f'Listening on unix socket {uds_path}')
-        uds_server = ThreadedUnixSocketListener(engine_choicies, dispatcher)
+        uds_server = ThreadedUnixSocketListener(engine, dispatcher)
         uds_server.run_server(uds_path, block=False)
         servers.append(uds_server)
 
