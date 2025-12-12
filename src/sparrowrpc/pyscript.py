@@ -1,19 +1,18 @@
 
 import logging
+import sys
 
 from pyscript import WebSocket
-from pyscript.util import as_bytearray
 
-try: #= async <
-    from asyncio import Queue, QueueEmpty #= async <
-except (AttributeError, ImportError):  #= async <
-    from uasync.queues import Queue, QueueEmpty # type: ignore  #= async <
+import asyncio
+try:
+    from asyncio import Queue, QueueEmpty
+except (AttributeError, ImportError):
+    from uasync.queues import Queue, QueueEmpty # type: ignore
 
-
-from .encoders import ProtocolEngineBase
 from .asyncio import AsyncMsgChannel
 from .asyncio.transports import AsyncTransportBase
-
+from .lib import portable_format_exc
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +27,12 @@ class PyscriptWebsocketTransport(AsyncTransportBase):
 
     async def connect(self, ws_url):
         self.ws_url = ws_url
-        self.js_ws = WebSocket(url=ws_url, onopen=self.js_onopen, onmessage=self.js_onmessage, onclose=self.js_onclose, onerror=self.js_onerror)
+        if sys.implementation.name == 'micropython':
+            onmessage = self.mpy_js_onmessage
+            log.info('In micropython')
+        else:
+            onmessage = self.js_onmessage
+        self.js_ws = WebSocket(url=ws_url, onopen=self.js_onopen, onmessage=onmessage, onclose=self.js_onclose, onerror=self.js_onerror)
         open_result = await self.open_complete.get()
         if open_result:  # an error
             log.error(f'Got an open_result error of {open_result}')
@@ -41,24 +45,36 @@ class PyscriptWebsocketTransport(AsyncTransportBase):
         await self.open_complete.put(None)
 
     async def js_onerror(self, event):
-        log.error(f'Got Javascript WS error: {event}')
+        log.debug(f'Got Javascript WS error: {event}')
         # FIXME: Check what state we are in
         # FIXME: better error
         e = RuntimeError('Error connecting')
         await self.open_complete.put(e)
 
+    def mpy_js_onmessage(self, event):
+        log.info(f'mpy got incoming data: {event.data!s}')
+        loop = asyncio.get_event_loop()
+        loop.create_task(self.js_onmessage(event))
+
     async def js_onmessage(self, event):
-        js_data = event.data
-        if isinstance(js_data, str):
-            log.error(f'Got non-binary data message - it is being dropped!')
-        else:
-            buffer = await js_data.arrayBuffer()
-            incoming_data = as_bytearray(buffer)
-            await self.raw_incoming.put(incoming_data)
+        log.info(f'Got incoming data: {event.data!s}')
+        try:
+            js_data = event.data
+            if isinstance(js_data, str):
+                log.error(f'Got non-binary data message - it is being dropped!')
+            else:
+                if sys.implementation.name == 'micropython':
+                    incoming_data = bytes.fromhex(js_data.hex())
+                    log.debug(f'Got incoming_data: {incoming_data}')
+                else:
+                    incoming_data = js_data.tobytes()
+                await self.raw_incoming.put(incoming_data)
+        except Exception as e:
+            log.error(f'Error in js_onmessage: {e!s}')
 
     async def js_onclose(self, event):
+        log.debug(f'Got onclose event: {event!r}')
         await self.raw_incoming.put(None)
-
 
     async def _read_data(self, size):
         data = await self.raw_incoming.get()
@@ -70,15 +86,19 @@ class PyscriptWebsocketTransport(AsyncTransportBase):
         return data
 
     async def _write_data(self, data):
-        log.debug(f'Sending data: {data}')
-        self.js_ws.send(data)
+        log.info(f'Sending data: {data}')
+        try:
+            self.js_ws.send(data)
+            log.info(f'Send complete: {data}')
+        except Exception as e:
+            log.error(f'_write_data error: {portable_format_exc(e)}')
 
     async def close(self):
-        self.js_ws.close()
+        await self.js_ws.close()
 
     
 class PyscriptWebsocketConnector:
-    def __init__(self, engine, dispatcher, func_registers=None, handshake_cls=None):
+    def __init__(self, engine, dispatcher, func_registers=None):
         self.engine = engine
         self.dispatcher = dispatcher
         self.func_registers = func_registers
