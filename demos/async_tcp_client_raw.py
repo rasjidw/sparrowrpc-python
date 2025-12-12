@@ -16,8 +16,7 @@ from sparrowrpc.asyncio.transports import AsyncTcpConnector
 
 if sys.implementation.name == 'micropython':
     print('**** MICROPYTHON ****')
-    if False:
-        from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketConnector
+    AsyncWebsocketConnector = None
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 else:
     from sparrowrpc.asyncio.transports.websockets import AsyncWebsocketConnector
@@ -135,7 +134,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--msgpack', action='store_true')
-    parser.add_argument('--websocket', action='store_true')
+    if AsyncWebsocketConnector:
+        parser.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
 
     root_logger = logging.getLogger()
