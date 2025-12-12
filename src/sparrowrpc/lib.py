@@ -1,8 +1,19 @@
 from __future__ import annotations
 
-import signal
-import socket
 import sys
+
+IN_MICROPYTHON = (sys.implementation.name == 'micropython')
+ON_WEBASSEMBLY = (sys.platform == 'webassembly')
+
+
+if IN_MICROPYTHON:
+    signal = socket = None
+    from uasync.queues import Queue
+else:
+    import signal
+    import socket
+
+import traceback
 from typing import Optional, Iterable, Callable
 
 
@@ -35,3 +46,10 @@ def detect_unix_socket_in_use(socket_path):
         return True
     except Exception:
         return False
+
+
+def portable_format_exc(e):
+    tb = getattr(e, '__traceback__', None)
+    return '\n'.join(traceback.format_exception(type(e), e, tb))
+
+
