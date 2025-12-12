@@ -64,10 +64,10 @@ class ResultWaiter:
         show_data(msg)
         if isinstance(msg, Response):
             self.result = msg.result
-            await self.got_result.set()
+            self.got_result.set()
         elif isinstance(msg, ExceptionResponse):
             self.exception = msg.exc_info
-            await self.got_result.set()
+            self.got_result.set()
         else:
             self.messages.append(msg)
 
@@ -113,11 +113,13 @@ async def main(args):
         default_serialiser_sig = 'c'
     else:
         default_serialiser_sig = 'j'
+    host = args.host
     engine = ProtocolEngine()
     dispatcher = AsyncDispatcher(num_threads=5)
     if getattr(args, 'websocket', None):
         connector = AsyncWebsocketConnector(engine, dispatcher, default_serialiser_sig=default_serialiser_sig)
-        uri = f'ws://127.0.0.1:9001/'
+        port = 9001 if not args.port else args.port
+        uri = f'ws://{host}:{port}/'
         channel = await connector.connect(uri)
     else:
         if getattr(args, 'unix_socket', None):
@@ -126,7 +128,8 @@ async def main(args):
             channel = await connector.connect(path)
         else:
             connector = AsyncTcpConnector(engine, dispatcher, default_serialiser_sig=default_serialiser_sig)
-            channel = await connector.connect('127.0.0.1', 5000)
+            port = 5000 if not args.port else args.port
+            channel = await connector.connect(host, port)
     await channel.start_channel()
 
     # start of test calls
@@ -183,7 +186,7 @@ async def main(args):
     print('Sleeping 2 on the main thread')
     await asyncio.sleep(2)
 
-    print('Waiting for backgroud task')
+    print('Waiting for background task')
     await background_task
 
     # for (a, b) in [(1, 2), (1, 0), (3, 4), (11, 22), (None, 2), ('a', 'b')]:
@@ -220,6 +223,9 @@ if __name__ == '__main__':
         conn_group.add_argument('--unix-socket', action='store_true')
         if AsyncWebsocketConnector:
             conn_group.add_argument('--websocket', action='store_true')
+
+    parser.add_argument('--host', default='127.0.0.1')
+    parser.add_argument('--port', type=int, default=0)
     args = parser.parse_args()
 
     root_logger = logging.getLogger()
