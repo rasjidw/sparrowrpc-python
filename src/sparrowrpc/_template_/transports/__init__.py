@@ -17,8 +17,6 @@ else: #= remove
         from asyncio import Queue, QueueEmpty #= async <
     except (AttributeError, ImportError):  #= async <
         from uasync.queues import Queue, QueueEmpty # type: ignore (for micropython)  #= async <
-from traceback import format_exc
-from typing import Any
 
 if sys.platform != 'webassembly':
     import socket

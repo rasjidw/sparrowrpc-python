@@ -17,12 +17,12 @@ from typing import Callable
 from ..bases import MsgChannelBase, DEFAULT_SERIALISER_SIG, DEFAULT_ENCODER_TAG
 
 from ..registers import FuncInfo
+from ..lib import portable_format_exc, IN_MICROPYTHON, ON_WEBASSEMBLY
 
 from threading import Thread, Lock, Event, current_thread
 from queue import Queue, Empty as QueueEmpty
 
 
-from traceback import format_exc
 
 from binarychain import BinaryChain, ChainReader
 
@@ -114,10 +114,13 @@ class ThreadedTransportBase(ABC):
             log.error(f'Error putting sentinel on incoming queue - {e!s}')
 
     def _writer(self):
-        while True:
-            time_to_stop = self._writer_send_one()
-            if time_to_stop:
-                break
+        try:
+            while True:
+                time_to_stop = self._writer_send_one()
+                if time_to_stop:
+                    break
+        except Exception as e:
+            log.error(f'Unexpected error in _writer - {e!s}')
 
     def _writer_send_one(self):
         try:
@@ -133,11 +136,13 @@ class ThreadedTransportBase(ABC):
                 data = chain.serialise()
                 self._write_data(data)
             except Exception as exc:
+                log.error(f'Exception on sending chain: {chain}')
+                log.error(portable_format_exc(exc))
                 e = exc
             notifier_queue.put(e)
             return False
         except Exception as e:
-            log.error(f'Writer aborting with exception {e!s}')
+            log.error(f'Writer aborting with exception: {e!s}')
         return True
 
     # FIXME: Do we even need this now - perhaps just read directly from the queue?
@@ -228,7 +233,7 @@ def threaded_call_func(msg_channel: ThreadedMsgChannel, incoming_msg: Request|No
         raise
     except Exception as e:
         log.warning('-' * 20)
-        log.warning(format_exc())
+        log.warning(portable_format_exc(e))
         log.warning('-' * 20)
         raise
 
@@ -272,7 +277,7 @@ def threaded_run_request_wait_to_complete(msg_channel: ThreadedMsgChannel, reque
                                     payload_serialisation_code=request.payload_serialisation_code,
                                     protocol_version=request.protocol_version)
         else:
-            log.debug(format_exc())
+            log.debug(portable_format_exc(e))
             if isinstance(e, CallerException):
                 exc_info = ExceptionInfo(category=ExceptionCategory.CALLER, exc_type=type(e).__name__, msg=str(e))
             else:
@@ -391,21 +396,24 @@ class ThreadedMsgChannel(MsgChannelBase):
         self._msg_reader_thread.join()
 
     def _incoming_msg_pump(self):
-        log.debug(f'message pump started on thread {get_thread_or_task_name()}')
-        while True:
-            (bin_chain, complete, remote_closed) = self.transport.incoming_queue.get()
-            if bin_chain is None:
-                # NOTE: complete is None is okay, as that is the shutdown marker
-                if not complete:
-                    log.warning('Got end of chains but not complete')
-                break
-            
-            message, dispatch, incoming_callback = self._parse_and_allocate_bin_chain(bin_chain)
-            log.debug(f'** Incoming message: {message}, Dispatch: {dispatch}, Callback: {incoming_callback}')
-            if dispatch:
-                self._dispatch(message)
-            if incoming_callback:
-                incoming_callback(message)
+        try:
+            log.debug(f'message pump started on thread {get_thread_or_task_name()}')
+            while True:
+                (bin_chain, complete, remote_closed) = self.transport.incoming_queue.get()
+                if bin_chain is None:
+                    # NOTE: complete is None is okay, as that is the shutdown marker
+                    if not complete:
+                        log.warning('Got end of chains but not complete')
+                    break
+
+                message, dispatch, incoming_callback = self._parse_and_allocate_bin_chain(bin_chain)
+                log.debug(f'** Incoming message: {message}, Dispatch: {dispatch}, Callback: {incoming_callback}')
+                if dispatch:
+                    self._dispatch(message)
+                if incoming_callback:
+                    incoming_callback(message)
+        except Exception as e:
+            log.error(f'_incoming_msg_pump stopped with exception {e!s}')
         log.debug(f'message pump stopped on thread {get_thread_or_task_name()}')
 
     def _dispatch(self, message: Request|Notification):
@@ -478,12 +486,16 @@ class ThreadedChannelProxy:
         return response_pump
 
     def send_request(self, message: Request, timeout=None, msg_sent_callback=None, ack_callback=None):
-        response_pump = ThreadedResponsePump(self, msg_sent_callback, ack_callback)
-        response_pump.send_message(message, timeout)
-        result = response_pump.__next__()
-        # FIXME: Check complete etc?
-        return result
-                    
+        try:
+            response_pump = ThreadedResponsePump(self, msg_sent_callback, ack_callback)
+            response_pump.send_message(message, timeout)
+            result = response_pump.__next__()
+            # FIXME: Check complete etc?
+            return result
+        except Exception as e:
+            log.error(f'Exception in send_request. {e!s}')
+            raise e
+
     def send_request_for_iter(self, message: Request, timeout=None, msg_sent_callback=None, ack_callback=None):
         response_pump = ThreadedResponsePump(self, msg_sent_callback, ack_callback, callback_iterable=True)
         response_pump.send_message(message, timeout)
@@ -531,7 +543,7 @@ class ThreadedChannelProxy:
 
 
 # FIXME: Do we just always return the result and event.final??? Makes the API more consistent
-class ThreadedResponsePump():
+class ThreadedResponsePump:
     def __init__(self, channel_proxy: ThreadedChannelProxy, msg_sent_callback=None, ack_callback=None,
                  expected_response_type: ResponseType=ResponseType.NORMAL,
                  callback_iterable=False):
@@ -628,39 +640,43 @@ class ThreadedResponsePump():
 
     def __iter__(self):
         return self
-        
+
     def __next__(self):
-        while True:
-            try:
-                event = self.get_next_event_with_timeout()
-            except Exception as e:
-                log.error(f'Got exception {str(e)} in __next__')
-                continue
+        try:
+            while True:
+                log.debug(f'Waiting for event in __next__')
+                try:
+                    event = self.get_next_event_with_timeout()
+                except Exception as e:
+                    log.error(f'Got exception {str(e)} in __next__. Continuing...')
+                    continue
 
-            log.debug(f'Got event in __next__: {event}')
-            if isinstance(event, MessageSentEvent):
-                self.call_msg_sent_callback(event)
-                if self.sent_notification:
-                    self.complete = True
-                    raise StopIteration
-                continue
+                log.debug(f'Got event in __next__: {event}')
+                if isinstance(event, MessageSentEvent):
+                    self.call_msg_sent_callback(event)
+                    if self.sent_notification:
+                        self.complete = True
+                        raise StopIteration
+                    continue
 
-            if isinstance(event, Acknowledge):
-                self.call_ack_callback(event)
-                continue
+                if isinstance(event, Acknowledge):
+                    self.call_ack_callback(event)
+                    continue
 
-            if isinstance(event, Response):
-                return self.process_response(event)
+                if isinstance(event, Response):
+                    return self.process_response(event)
 
-            if isinstance(event, Request) or isinstance(event, Notification):
-                self.process_incoming_req_or_notification(event)
-                continue
+                if isinstance(event, Request) or isinstance(event, Notification):
+                    self.process_incoming_req_or_notification(event)
+                    continue
 
-            if isinstance(event, ExceptionResponse):
-                self.process_incoming_exception(event)
+                if isinstance(event, ExceptionResponse):
+                    self.process_incoming_exception(event)
 
-            log.error(f'Unhandled event {event}')
-
+                log.error(f'Unhandled event {event}')
+        except Exception as e:
+            log.error(f'Got exception {str(e)} in __next__')
+            raise e
 
 class ThreadedRequestProxy:
     def __init__(self, msg_channel: ThreadedMsgChannel, target: str, namespace: str=None, node: str=None,

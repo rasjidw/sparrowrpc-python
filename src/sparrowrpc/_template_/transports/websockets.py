@@ -89,8 +89,9 @@ class _Template_WebsocketListener:
     async def _run_server(self, bind_address, port):
         async with server.serve(self._websocket_handler, bind_address, port) as self.websocket_server: 
             log.info(f'Websocket Listing on {bind_address}:{port}')
-            #= threaded start 
-            self.websocket_server.serve_forever()
+            #= threaded start
+            # await is removed during generation from template  #= remove
+            await self.websocket_server.serve_forever()
             #= threaded end
             #= async start
             try:

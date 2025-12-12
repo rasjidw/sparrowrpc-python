@@ -16,8 +16,6 @@ import sys
 
 from threading import Thread, Lock, Event, current_thread
 from queue import Queue, Empty as QueueEmpty
-from traceback import format_exc
-from typing import Any
 
 if sys.platform != 'webassembly':
     import socket

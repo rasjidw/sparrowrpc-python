@@ -10,6 +10,7 @@ from typing import Callable
 from ..bases import MsgChannelBase, DEFAULT_SERIALISER_SIG, DEFAULT_ENCODER_TAG
 
 from ..registers import FuncInfo
+from ..lib import portable_format_exc, IN_MICROPYTHON, ON_WEBASSEMBLY
 
 if 'threaded' in __name__: #= remove
     from threading import Thread, Lock, Event, current_thread  #= threaded <
@@ -26,7 +27,6 @@ else: #= remove
     # also add @non_blocking decorator  #= async <
     #from concurrent.futures import ThreadPoolExecutor #= async <
 
-from traceback import format_exc
 
 from binarychain import BinaryChain, ChainReader
 
@@ -133,10 +133,13 @@ class _Template_TransportBase(ABC):
             log.error(f'Error putting sentinel on incoming queue - {e!s}')
 
     async def _writer(self):
-        while True:
-            time_to_stop = await self._writer_send_one()
-            if time_to_stop:
-                break
+        try:
+            while True:
+                time_to_stop = await self._writer_send_one()
+                if time_to_stop:
+                    break
+        except Exception as e:
+            log.error(f'Unexpected error in _writer - {e!s}')
 
     async def _writer_send_one(self):
         try:
@@ -152,11 +155,13 @@ class _Template_TransportBase(ABC):
                 data = chain.serialise()
                 await self._write_data(data)
             except Exception as exc:
+                log.error(f'Exception on sending chain: {chain}')
+                log.error(portable_format_exc(exc))
                 e = exc
             await notifier_queue.put(e)
             return False
         except Exception as e:
-            log.error(f'Writer aborting with exception {e!s}')
+            log.error(f'Writer aborting with exception: {e!s}')
         return True
 
     # FIXME: Do we even need this now - perhaps just read directly from the queue?
@@ -188,12 +193,12 @@ class _Template_TransportBase(ABC):
         #= async start
         try:
             await self.reader_task
-        except Exception:
-            log.error(f'reader_task error:\n{format_exc()}')
+        except Exception as e:
+            log.error(f'reader_task error:\n{portable_format_exc(e)}')
         try:
             await self.writer_task
         except Exception as e:
-            log.error(f'writer_task error:\n{format_exc()}')
+            log.error(f'writer_task error:\n{portable_format_exc(e)}')
         #= async end
         
     @abstractmethod
@@ -266,7 +271,7 @@ async def _template__call_func(msg_channel: _Template_MsgChannel, incoming_msg: 
         raise
     except Exception as e:
         log.warning('-' * 20)
-        log.warning(format_exc())
+        log.warning(portable_format_exc(e))
         log.warning('-' * 20)
         raise
 
@@ -310,7 +315,7 @@ async def _template__run_request_wait_to_complete(msg_channel: _Template_MsgChan
                                     payload_serialisation_code=request.payload_serialisation_code,
                                     protocol_version=request.protocol_version)
         else:
-            log.debug(format_exc())
+            log.debug(portable_format_exc(e))
             if isinstance(e, CallerException):
                 exc_info = ExceptionInfo(category=ExceptionCategory.CALLER, exc_type=type(e).__name__, msg=str(e))
             else:
@@ -428,9 +433,9 @@ class _Template_Dispatcher(_Template_DispatcherBase):
                 # await the completed task to get any exceptions
                 await task
                 log.debug(f'Task {task!s} awaited')
-            except Exception:
+            except Exception as e:
                 log.warning(f'Exception happened in task {task!s}')
-                log.warning(format_exc())
+                log.warning(portable_format_exc(e))
 
             try:
                 self.tasks.remove(task)
@@ -508,21 +513,24 @@ class _Template_MsgChannel(MsgChannelBase):
         await self._msg_reader_task #= async
 
     async def _incoming_msg_pump(self):
-        log.debug(f'message pump started on thread {get_thread_or_task_name()}')
-        while True:
-            (bin_chain, complete, remote_closed) = await self.transport.incoming_queue.get()
-            if bin_chain is None:
-                # NOTE: complete is None is okay, as that is the shutdown marker
-                if not complete:
-                    log.warning('Got end of chains but not complete')
-                break
-            
-            message, dispatch, incoming_callback = self._parse_and_allocate_bin_chain(bin_chain)
-            log.debug(f'** Incoming message: {message}, Dispatch: {dispatch}, Callback: {incoming_callback}')
-            if dispatch:
-                await self._dispatch(message)
-            if incoming_callback:
-                await incoming_callback(message)
+        try:
+            log.debug(f'message pump started on thread {get_thread_or_task_name()}')
+            while True:
+                (bin_chain, complete, remote_closed) = await self.transport.incoming_queue.get()
+                if bin_chain is None:
+                    # NOTE: complete is None is okay, as that is the shutdown marker
+                    if not complete:
+                        log.warning('Got end of chains but not complete')
+                    break
+
+                message, dispatch, incoming_callback = self._parse_and_allocate_bin_chain(bin_chain)
+                log.debug(f'** Incoming message: {message}, Dispatch: {dispatch}, Callback: {incoming_callback}')
+                if dispatch:
+                    await self._dispatch(message)
+                if incoming_callback:
+                    await incoming_callback(message)
+        except Exception as e:
+            log.error(f'_incoming_msg_pump stopped with exception {e!s}')
         log.debug(f'message pump stopped on thread {get_thread_or_task_name()}')
 
     async def _dispatch(self, message: Request|Notification):
@@ -596,12 +604,16 @@ class _Template_ChannelProxy:
         return response_pump
 
     async def send_request(self, message: Request, timeout=None, msg_sent_callback=None, ack_callback=None):
-        response_pump = _Template_ResponsePump(self, msg_sent_callback, ack_callback)
-        await response_pump.send_message(message, timeout)
-        result = await response_pump.__anext__()
-        # FIXME: Check complete etc?
-        return result
-                    
+        try:
+            response_pump = _Template_ResponsePump(self, msg_sent_callback, ack_callback)
+            await response_pump.send_message(message, timeout)
+            result = await response_pump.__anext__()
+            # FIXME: Check complete etc?
+            return result
+        except Exception as e:
+            log.error(f'Exception in send_request. {e!s}')
+            raise e
+
     async def send_request_for_iter(self, message: Request, timeout=None, msg_sent_callback=None, ack_callback=None):
         response_pump = _Template_ResponsePump(self, msg_sent_callback, ack_callback, callback_iterable=True)
         await response_pump.send_message(message, timeout)
@@ -657,7 +669,7 @@ class _Template_ChannelProxy:
 
 
 # FIXME: Do we just always return the result and event.final??? Makes the API more consistent
-class _Template_ResponsePump():
+class _Template_ResponsePump:
     def __init__(self, channel_proxy: _Template_ChannelProxy, msg_sent_callback=None, ack_callback=None,
                  expected_response_type: ResponseType=ResponseType.NORMAL,
                  callback_iterable=False):
@@ -771,7 +783,16 @@ class _Template_ResponsePump():
             #= threaded end
             #= async start
             try:
-                return await asyncio.wait_for(self.return_queue.get(), timeout=1)
+                log.debug('Waiting for return_queue...')
+                if IN_MICROPYTHON and ON_WEBASSEMBLY:
+                    # FIXME: work around a crash in micropython on webassembly (pyscript)
+                    # means we don't have timeout support (which is not fully developed yet anyway....)
+                    # Can be removed once https://github.com/pyscript/pyscript/issues/2415 is fixed in production
+                    result = await self.return_queue.get()
+                else:
+                    result = await asyncio.wait_for(self.return_queue.get(), timeout=1)
+                log.debug(f'Waiting for return_queue. Got result: {result}')
+                return result
             except Exception as e:
                 if not isinstance(e, asyncio.TimeoutError):
                     log.error(f'Get error {str(e)} waiting for timeout')
@@ -782,39 +803,43 @@ class _Template_ResponsePump():
 
     def __aiter__(self):
         return self
-        
+
     async def __anext__(self):
-        while True:
-            try:
-                event = await self.get_next_event_with_timeout()
-            except Exception as e:
-                log.error(f'Got exception {str(e)} in __anext__')
-                continue
+        try:
+            while True:
+                log.debug(f'Waiting for event in __anext__')
+                try:
+                    event = await self.get_next_event_with_timeout()
+                except Exception as e:
+                    log.error(f'Got exception {str(e)} in __anext__. Continuing...')
+                    continue
 
-            log.debug(f'Got event in __anext__: {event}')
-            if isinstance(event, MessageSentEvent):
-                await self.call_msg_sent_callback(event)
-                if self.sent_notification:
-                    self.complete = True
-                    raise StopAsyncIteration
-                continue
+                log.debug(f'Got event in __anext__: {event}')
+                if isinstance(event, MessageSentEvent):
+                    await self.call_msg_sent_callback(event)
+                    if self.sent_notification:
+                        self.complete = True
+                        raise StopAsyncIteration
+                    continue
 
-            if isinstance(event, Acknowledge):
-                await self.call_ack_callback(event)
-                continue
+                if isinstance(event, Acknowledge):
+                    await self.call_ack_callback(event)
+                    continue
 
-            if isinstance(event, Response):
-                return await self.process_response(event)
+                if isinstance(event, Response):
+                    return await self.process_response(event)
 
-            if isinstance(event, Request) or isinstance(event, Notification):
-                await self.process_incoming_req_or_notification(event)
-                continue
+                if isinstance(event, Request) or isinstance(event, Notification):
+                    await self.process_incoming_req_or_notification(event)
+                    continue
 
-            if isinstance(event, ExceptionResponse):
-                await self.process_incoming_exception(event)
+                if isinstance(event, ExceptionResponse):
+                    await self.process_incoming_exception(event)
 
-            log.error(f'Unhandled event {event}')
-
+                log.error(f'Unhandled event {event}')
+        except Exception as e:
+            log.error(f'Got exception {str(e)} in __anext__')
+            raise e
 
 class _Template_RequestProxy:
     def __init__(self, msg_channel: _Template_MsgChannel, target: str, namespace: str=None, node: str=None,

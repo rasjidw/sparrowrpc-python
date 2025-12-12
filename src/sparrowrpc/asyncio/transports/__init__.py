@@ -20,8 +20,6 @@ try:
     from asyncio import Queue, QueueEmpty
 except (AttributeError, ImportError):
     from uasync.queues import Queue, QueueEmpty # type: ignore (for micropython)
-from traceback import format_exc
-from typing import Any
 
 if sys.platform != 'webassembly':
     import socket
