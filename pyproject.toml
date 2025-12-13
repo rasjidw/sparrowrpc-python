@@ -1,10 +1,17 @@
 [project]
 name = "sparrowrpc"
 description = "A Multi-Transport Peer-to-Peer bidirectional RPC System and Protocol Engine"
-version = "0.1.0"
+version = "0.1.1"
 authors = [
  {name = "Rasjid Wilcox", email = "rasjidw@openminddev.net"}
 ]
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+license-files = [
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+]
+requires-python = ">=3.8"
 
 dependencies = [
     "binarychain",
