@@ -515,14 +515,16 @@ class _Template_MsgChannel(MsgChannelBase):
     async def _incoming_msg_pump(self):
         try:
             log.debug(f'message pump started on thread {get_thread_or_task_name()}')
+            last_complete = True
             while True:
                 (bin_chain, complete, remote_closed) = await self.transport.incoming_queue.get()
                 if bin_chain is None:
                     # NOTE: complete is None is okay, as that is the shutdown marker
-                    if not complete:
+                    if not last_complete:
                         log.warning('Got end of chains but not complete')
                     break
 
+                last_complete = complete
                 message, dispatch, incoming_callback = self._parse_and_allocate_bin_chain(bin_chain)
                 log.debug(f'** Incoming message: {message}, Dispatch: {dispatch}, Callback: {incoming_callback}')
                 if dispatch:
