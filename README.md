@@ -27,7 +27,8 @@ It also runs on MicroPython (currently only tested on the unix port of MicroPyth
 
 ## Status
 
-This is in heavy development and is currently ALPHA.
+### Sparrow RPC is in heavy development and is currently ALPHA.
+
 Most of the core features are done but expect breaking changes at this stage, and a lot of error handling is not yet in place.
 
 
