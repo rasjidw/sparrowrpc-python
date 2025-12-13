@@ -838,7 +838,8 @@ class _Template_ResponsePump:
 
                 log.error(f'Unhandled event {event}')
         except Exception as e:
-            log.error(f'Got exception {str(e)} in __anext__')
+            if not isinstance(e, StopAsyncIteration):
+                log.error(f'Got exception {str(e)} in __anext__')
             raise e
 
 class _Template_RequestProxy:

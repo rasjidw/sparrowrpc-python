@@ -675,7 +675,8 @@ class ThreadedResponsePump:
 
                 log.error(f'Unhandled event {event}')
         except Exception as e:
-            log.error(f'Got exception {str(e)} in __next__')
+            if not isinstance(e, StopIteration):
+                log.error(f'Got exception {str(e)} in __next__')
             raise e
 
 class ThreadedRequestProxy:
