@@ -1,7 +1,7 @@
 [project]
 name = "sparrowrpc"
 description = "A Multi-Transport Peer-to-Peer bidirectional RPC System and Protocol Engine"
-version = "0.1.1"
+version = "0.1.2"
 authors = [
  {name = "Rasjid Wilcox", email = "rasjidw@openminddev.net"}
 ]
