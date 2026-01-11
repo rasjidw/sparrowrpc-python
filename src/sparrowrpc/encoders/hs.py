@@ -65,9 +65,8 @@ class BasicEncoderDecoder(EncoderDecoderBase):
         data['id'] = message.message_id
         return data
 
-    @staticmethod
-    def _make_out_call(message: CallBase):
-        data: Dict[str, Any] = dict(target=message.target)
+    def _make_out_call(self, message: CallBase):
+        data: Dict[str, Any] = dict(target=message.target, v=self.TAG)
         if message.namespace:
             data['namespace'] = message.namespace
         if message.node:
@@ -89,16 +88,18 @@ class BasicEncoderDecoder(EncoderDecoderBase):
 
     def _make_out_resp(self, message: Response):
         self._check_supported_response(message)
-        return dict(result=message.result, id=message.request_id)
+        return dict(result=message.result, id=message.request_id, v=self.TAG)
 
-    @staticmethod
-    def _make_out_except(message: ExceptionResponse):
+    def _make_out_except(self, message: ExceptionResponse):
         except_data = make_out_except_data(message)
-        return dict(error=except_data, id=message.request_id)
+        return dict(error=except_data, id=message.request_id, v=self.TAG)
 
     def decode_raw_envelope(self, raw_envelope_data: dict, envelope_serialisation_code: str):
         if not isinstance(raw_envelope_data, dict):
             raise ProtocolError('message must be a map/dict')
+
+        # FIXME: We need to type-check incoming data
+        # eg, what if namespace is a number etc?
 
         if 'target' in raw_envelope_data:
             # either a Request or Notification
