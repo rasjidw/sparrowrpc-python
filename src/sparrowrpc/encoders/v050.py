@@ -103,7 +103,7 @@ class V050EncoderDecoder(EncoderDecoderBase):
             envelope_data['d'] = message.node
         if message.namespace:
             envelope_data['s'] = message.namespace
-        if message.payload_serialisation_code != message.envelope_serialisation_code:
+        if message.payload_serialisation_code and message.payload_serialisation_code != message.envelope_serialisation_code:
             envelope_data['l'] = message.payload_serialisation_code
         return envelope_data
 
@@ -138,7 +138,7 @@ class V050EncoderDecoder(EncoderDecoderBase):
             envelope_data['s'] = message.namespace
         if message.callback_request_id:
             envelope_data['c'] = message.callback_request_id
-        if message.payload_serialisation_code != message.envelope_serialisation_code:
+        if message.payload_serialisation_code and message.payload_serialisation_code != message.envelope_serialisation_code:
             envelope_data['l'] = message.payload_serialisation_code
         return envelope_data
     
@@ -163,7 +163,7 @@ class V050EncoderDecoder(EncoderDecoderBase):
         envelope_data: Dict[str, Any] = {marker: message.request_id, 'v': message.protocol_version}
         if message.message_id is not None:
             envelope_data['i'] = message.message_id
-        if message.payload_serialisation_code != message.envelope_serialisation_code:
+        if message.payload_serialisation_code and message.payload_serialisation_code != message.envelope_serialisation_code:
             envelope_data['l'] = message.payload_serialisation_code
         return envelope_data
     
@@ -184,7 +184,7 @@ class V050EncoderDecoder(EncoderDecoderBase):
         envelope_data: Dict[str, Any] = {marker: message.request_id, 'v': message.protocol_version}
         if message.message_id is not None:
             envelope_data['i'] = message.message_id
-        if message.payload_serialisation_code != message.envelope_serialisation_code:
+        if message.payload_serialisation_code and message.payload_serialisation_code != message.envelope_serialisation_code:
             envelope_data['l'] = message.payload_serialisation_code
         return envelope_data
 
