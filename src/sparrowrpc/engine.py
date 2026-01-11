@@ -11,6 +11,7 @@ from . import messages, serialisers
 from .encoders import hs, v050
 from .registers import FunctionRegister
 
+# FIXME: Does the sig_override even work?
 
 class ProtocolEngine:
     def __init__(self, load_default_serialisers=True, load_default_encoders=True,
@@ -76,15 +77,15 @@ class ProtocolEngine:
             raise ProtocolError('No protocol version not found')
         
         try:
-            engine = self.encoders[protocol_version]
+            encoder = self.encoders[protocol_version]
         except KeyError:
             raise ProtocolError(f'Engine with tag {protocol_version} not found')
         
         # decode the envelope
-        message = engine.decode_raw_envelope(envelope_data, envelope_serialisation_code)
+        message = encoder.decode_raw_envelope(envelope_data, envelope_serialisation_code)
 
         # parse the payload data
-        engine.parse_payload_data(message, raw_payload_data)
+        encoder.parse_payload_data(message, raw_payload_data)
 
         return message        
 
