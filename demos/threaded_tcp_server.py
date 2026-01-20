@@ -17,7 +17,7 @@ except ImportError:
     ThreadedWebsocketListener = None
 
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
+logging.basicConfig(stream=sys.stdout, level=logging.INFO,
                     format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s'
                     )
 
@@ -74,11 +74,16 @@ def division(a, b):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--debug', action='store_true')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--unix-socket', action='store_true')
     if ThreadedWebsocketListener:
         group.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
+
+    if args.debug:
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.DEBUG)
 
     protocol_engine = ProtocolEngine()
     dispatcher = ThreadedDispatcher(num_threads=5)    

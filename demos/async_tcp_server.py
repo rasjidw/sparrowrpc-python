@@ -20,7 +20,7 @@ if sys.implementation.name == 'micropython':
     logging.basicConfig(level=logging.DEBUG)
     micropython = True
 else:
-    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
     micropython = False
 
 
@@ -109,11 +109,16 @@ async def division(a, b):
 
 async def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--debug', action='store_true')
     group = parser.add_mutually_exclusive_group() if not micropython else parser
     group.add_argument('--unix-socket', action='store_true')
     if AsyncWebsocketListener:
         group.add_argument('--websocket', action='store_true')
     args = parser.parse_args()
+
+    if args.debug:
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.DEBUG)
 
     engine = ProtocolEngine()
     dispatcher = AsyncDispatcher(num_threads=5)
