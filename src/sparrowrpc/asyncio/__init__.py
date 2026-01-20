@@ -79,7 +79,7 @@ class AsyncTransportBase(ABC):
         self.max_msg_size = max_msg_size
         self.max_bc_length = max_bc_length
         self.incoming_queue = Queue(maxsize=incoming_msg_queue_size)  # incoming queue of (BinaryChain, complete, remote_closed)
-        self.outgoing_queue = Queue(maxsize=outgoing_msg_queue_size)  # outgoing queue of (BinaryChain, outgoing_queue)
+        self.outgoing_queue = Queue(maxsize=outgoing_msg_queue_size)  # outgoing queue of (BinaryChain, notifier_queue)
         self.read_buf_size = read_buf_size
         self.remote_closed = False
         self.chain_reader = ChainReader(max_part_size=self.max_msg_size, max_chain_size=self.max_msg_size, max_chain_length=self.max_bc_length)
