@@ -74,7 +74,7 @@ class BasicEncoderDecoder(EncoderDecoderBase):
         return data
 
     def _make_out_call(self, message: CallBase):
-        data: Dict[str, Any] = dict(target=message.target, v=self.TAG)
+        data: Dict[str, Any] = dict(target=message.target)
         if message.namespace:
             data['namespace'] = message.namespace
         if message.node:
@@ -96,11 +96,11 @@ class BasicEncoderDecoder(EncoderDecoderBase):
 
     def _make_out_resp(self, message: Response):
         self._check_supported_response(message)
-        return dict(result=message.result, id=message.request_id, v=self.TAG)
+        return dict(result=message.result, id=message.request_id)
 
     def _make_out_except(self, message: ExceptionResponse):
         except_data = make_out_except_data(message)
-        return dict(error=except_data, id=message.request_id, v=self.TAG)
+        return dict(error=except_data, id=message.request_id)
 
     def binary_list_to_incoming_message(self, binary_list: List[bytes|bytearray]) -> MessageBase:
         envelope_serialisation_code = binary_list[0].decode()
