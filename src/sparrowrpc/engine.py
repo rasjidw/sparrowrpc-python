@@ -51,69 +51,28 @@ class ProtocolEngine:
         self.encoders[engine.TAG] = engine
 
     def parse_incoming_message(self, incoming_bin_chain: BinaryChain):
-        envelope_serialisation_code = incoming_bin_chain.prefix
-        msg_parts = incoming_bin_chain.parts
+        protocol_version = incoming_bin_chain.prefix
 
-        try:
-            envelope_serialiser = self.serialisers[envelope_serialisation_code]
-        except KeyError:
-            raise ProtocolError(f'Serialiser {envelope_serialisation_code} not found')
-        
-        if not msg_parts:
-            raise ProtocolError('No envelope data found - empty binary chain') 
-        
-        raw_envelope_data, raw_payload_data = msg_parts[0], msg_parts[1:]
-        envelope_data = envelope_serialiser.deserialise(raw_envelope_data)
-
-        # print(envelope_data)
-        # print(type(envelope_data))
-
-        if not isinstance(envelope_data, dict):
-            raise ProtocolError('Envelope must be a map / dict')
-        
-        try:
-            protocol_version = envelope_data.pop('v')
-        except KeyError:
-            raise ProtocolError('No protocol version not found')
-        
         try:
             encoder = self.encoders[protocol_version]
         except KeyError:
             raise ProtocolError(f'Engine with tag {protocol_version} not found')
-        
-        # decode the envelope
-        message = encoder.decode_raw_envelope(envelope_data, envelope_serialisation_code)
 
-        # parse the payload data
-        encoder.parse_payload_data(message, raw_payload_data)
-
-        return message        
+        return encoder.binary_list_to_incoming_message(incoming_bin_chain.parts)
 
     def message_to_binary_chain(self, message: messages.MessageBase):
-        envelope_serialisation_code = message.envelope_serialisation_code
-        if not envelope_serialisation_code:
-            raise ValueError('Envelope Serialisation Code must be set')
-        
-        try:
-            envelope_serialiser = self.serialisers[envelope_serialisation_code]
-        except KeyError:
-            raise ValueError(f'Serialiser {envelope_serialisation_code} not found')
-
         protocol_version = message.protocol_version
         if not protocol_version:
             raise ValueError('Protocol version must be set')
         
         try:
-            engine = self.encoders[protocol_version]
+            encoder = self.encoders[protocol_version]
         except KeyError:
             raise ProtocolError(f'Engine with tag {protocol_version} not found')
 
-        envelope_data = engine.encode_envelope(message)
-        msg_parts = [envelope_serialiser.serialise(envelope_data)]
-        msg_parts.extend(engine.serialise_payload_data(message))
+        binary_list = encoder.outgoing_message_to_binary_list(message)
+        return BinaryChain(protocol_version, binary_list)
 
-        return BinaryChain(envelope_serialisation_code, msg_parts)
-    
     def get_system_register(self):
         register = FunctionRegister(namespace='#sys')
         register.register_func(self._ping, 'ping')

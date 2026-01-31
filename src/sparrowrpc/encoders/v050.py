@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Any, Union, Tuple, TYPE_CHECKING
+from typing import Dict, Any, Union, Tuple, TYPE_CHECKING, List
 
 from ..messages import (Acknowledge, Notification, Request, Response, ExceptionCategory, ExceptionInfo, CallBase, MessageBase, ResponseBase,
                         RequestCallbackInfo, RequestType, ResponseType, ExceptionResponse, IterableCallbackInfo, FinalType)
@@ -52,7 +52,16 @@ class V050EncoderDecoder(EncoderDecoderBase):
                                   ExceptionResponse: self._make_exception_payload,
                                   Acknowledge: self._make_ack_payload,
                                   }
-    
+
+    def outgoing_message_to_binary_list(self, message: MessageBase) -> List[bytes|bytearray]:
+        envelope_serialiser = self.protocol_engine.serialisers[message.envelope_serialisation_code]
+        binary_list = [message.envelope_serialisation_code.encode(),
+                       envelope_serialiser.serialise(self.encode_envelope(message))]
+        payload_parts = self.serialise_payload_data(message)
+        if payload_parts:
+            binary_list.extend(payload_parts)
+        return binary_list
+
     def _get_payload_serialiser(self, message: MessageBase):
         # get the serialisers
         psc = message.envelope_serialisation_code
@@ -198,6 +207,25 @@ class V050EncoderDecoder(EncoderDecoderBase):
     
     def _make_ack_payload(self, message: Acknowledge):
         return []
+
+    def binary_list_to_incoming_message(self, binary_list: List[bytes|bytearray]) -> MessageBase:
+        envelope_serialisation_code = binary_list[0].decode()
+        envelope_serialiser = self.protocol_engine.serialisers[envelope_serialisation_code]
+        raw_envelope_data, raw_payload_data = binary_list[1], binary_list[2:]
+        envelope_data = envelope_serialiser.deserialise(raw_envelope_data)
+
+        # print(envelope_data)
+        # print(type(envelope_data))
+
+        if not isinstance(envelope_data, dict):
+            raise ProtocolError('Envelope must be a map / dict')
+
+        # decode the envelope
+        message = self.decode_raw_envelope(envelope_data, envelope_serialisation_code)
+
+        # parse the payload data
+        self.parse_payload_data(message, raw_payload_data)
+        return message
 
     def parse_payload_data(self, message: Union[CallBase, ResponseBase], raw_payload_data: list):
         assert isinstance(message, (CallBase, ResponseBase))

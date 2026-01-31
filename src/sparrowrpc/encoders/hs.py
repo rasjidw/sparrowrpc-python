@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 
 from ..messages import Notification, CallBase, Request, Response, ExceptionCategory, ExceptionInfo, RequestType, ResponseType, MessageBase
@@ -34,6 +36,12 @@ class BasicEncoderDecoder(EncoderDecoderBase):
                           }
         
         self.channels = list()
+
+    def outgoing_message_to_binary_list(self, message: MessageBase) -> List[bytes|bytearray]:
+        # if we move the payload to its own binary part, add this here
+        envelope_serialiser = self.protocol_engine.serialisers[message.envelope_serialisation_code]
+        return [message.envelope_serialisation_code.encode(),
+                envelope_serialiser.serialise(self.encode_envelope(message))]
 
     def encode_envelope(self, message: MessageBase):
         try:
@@ -93,6 +101,12 @@ class BasicEncoderDecoder(EncoderDecoderBase):
     def _make_out_except(self, message: ExceptionResponse):
         except_data = make_out_except_data(message)
         return dict(error=except_data, id=message.request_id, v=self.TAG)
+
+    def binary_list_to_incoming_message(self, binary_list: List[bytes|bytearray]) -> MessageBase:
+        envelope_serialisation_code = binary_list[0].decode()
+        serialiser = self.protocol_engine.serialisers[envelope_serialisation_code]
+        raw_envelope_data = serialiser.deserialise(binary_list[1])
+        return self.decode_raw_envelope(raw_envelope_data, envelope_serialisation_code)
 
     def decode_raw_envelope(self, raw_envelope_data: dict, envelope_serialisation_code: str):
         if not isinstance(raw_envelope_data, dict):
