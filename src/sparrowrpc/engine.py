@@ -51,14 +51,14 @@ class ProtocolEngine:
         self.encoders[engine.TAG] = engine
 
     def parse_incoming_message(self, incoming_bin_chain: BinaryChain):
-        protocol_version = incoming_bin_chain.prefix
+        protocol_version = incoming_bin_chain.parts[0].decode()
 
         try:
             encoder = self.encoders[protocol_version]
         except KeyError:
             raise ProtocolError(f'Engine with tag {protocol_version} not found')
 
-        return encoder.binary_list_to_incoming_message(incoming_bin_chain.parts)
+        return encoder.binary_list_to_incoming_message(incoming_bin_chain.parts[1:])
 
     def message_to_binary_chain(self, message: messages.MessageBase):
         protocol_version = message.protocol_version
@@ -71,7 +71,8 @@ class ProtocolEngine:
             raise ProtocolError(f'Engine with tag {protocol_version} not found')
 
         binary_list = encoder.outgoing_message_to_binary_list(message)
-        return BinaryChain(protocol_version, binary_list)
+        parts = [protocol_version.encode()] + binary_list
+        return BinaryChain(parts=parts)
 
     def get_system_register(self):
         register = FunctionRegister(namespace='#sys')
